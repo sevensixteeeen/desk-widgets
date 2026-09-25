@@ -1,0 +1,34 @@
+[package]
+name = "desk-widgets"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "desk_widgets_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-opener = "2"          # opens the Google sign-in page in your browser
+tauri-plugin-window-state = "2"    # remembers where you dragged each widget
+tauri-plugin-autostart = "2"       # "Open at login"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+url = "2"
+rand = "0.8"
+sha2 = "0.10"
+base64 = "0.22"
+
+# Windows-only: the WinRT API that exposes "what's playing" from any app
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", features = [
+    "Foundation",
+    "Media_Control",
+    "Storage_Streams",
+    "Win32_Foundation",              # HWND (a window handle)
+    "Win32_UI_WindowsAndMessaging",  # FindWindowW, SetWindowLongPtrW
+] }

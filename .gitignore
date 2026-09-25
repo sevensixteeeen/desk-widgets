@@ -1,0 +1,23 @@
+# Dependencies and build output (huge, and rebuilt from source)
+node_modules/
+src-tauri/target/
+src-tauri/gen/
+
+# Secrets: never commit these, even by accident.
+# The app reads them from %APPDATA%\com.deskwidgets.app\, not from this folder.
+google_client.json
+google_token.json
+client_secret*.json
+*.env
+.env*
+
+# Personal app data, if ever copied here
+settings.json
+alarms.json
+
+# Editor and OS clutter
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
+*.log

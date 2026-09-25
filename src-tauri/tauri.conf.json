@@ -1,0 +1,88 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Desk Widgets",
+  "version": "0.1.0",
+  "identifier": "com.deskwidgets.app",
+  "build": {
+    "frontendDist": "../src"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "security": {
+      "csp": null
+    },
+    "windows": [
+      {
+        "label": "clock",
+        "title": "Clock",
+        "url": "index.html",
+        "width": 296,
+        "height": 148,
+        "x": 40,
+        "y": 40,
+        "decorations": false,
+        "transparent": true,
+        "shadow": false,
+        "resizable": false,
+        "skipTaskbar": true,
+        "alwaysOnBottom": true
+      },
+      {
+        "label": "nowplaying",
+        "title": "Now playing",
+        "url": "index.html",
+        "width": 296,
+        "height": 117,
+        "x": 40,
+        "y": 246,
+        "decorations": false,
+        "transparent": true,
+        "shadow": false,
+        "resizable": false,
+        "skipTaskbar": true,
+        "alwaysOnBottom": true
+      },
+      {
+        "label": "weather",
+        "title": "Weather",
+        "url": "index.html",
+        "width": 296,
+        "height": 172,
+        "x": 40,
+        "y": 412,
+        "decorations": false,
+        "transparent": true,
+        "shadow": false,
+        "resizable": false,
+        "skipTaskbar": true,
+        "alwaysOnBottom": true
+      },
+      {
+        "label": "calendar",
+        "title": "Calendar",
+        "url": "index.html",
+        "width": 250,
+        "height": 367,
+        "x": 436,
+        "y": 40,
+        "decorations": false,
+        "transparent": true,
+        "shadow": false,
+        "resizable": false,
+        "skipTaskbar": true,
+        "alwaysOnBottom": true
+      }
+    ]
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}

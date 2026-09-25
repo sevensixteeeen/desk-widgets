@@ -1,0 +1,231 @@
+/* ---------- Two-ink print design system ----------
+   Colours come from your wallpaper (theme.js). The big numbers are "printed"
+   twice, once in each ink, slightly off-register. That offset is the one bold
+   move; everything else stays quiet. */
+
+@font-face {
+  font-family: "Archivo";
+  src: url("fonts/archivo.woff2") format("woff2-variations");
+  font-weight: 100 900;
+  font-stretch: 62% 125%; /* width axis: condensed <-> expanded */
+  font-display: block;
+}
+
+:root[data-theme="dark"] { color-scheme: dark; } /* dark date/time pickers */
+
+:root {
+  /* Defaults. theme.js overwrites these with colours taken from your wallpaper. */
+  --paper: hsl(210 10% 93% / 1);        /* card background (slightly see-through when themed) */
+  --paper-solid: hsl(210 10% 93%);      /* same colour, opaque: text on accent fills */
+  --ink: #1c2340;                       /* main text */
+  --muted: #6a7090;                     /* secondary text */
+  --accent-a: #0078bf;                  /* first "ink": big numbers, buttons, today */
+  --accent-b: #ff48b0;                  /* second "ink": off-register copy, bars, dots */
+  --blend: multiply;                    /* how the two inks mix where they overlap */
+  --rule: color-mix(in srgb, var(--ink) 15%, transparent);
+
+  /* Neutral grey noise; blended with "overlay" it textures light and dark cards alike. */
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .5 0 0 0 0 .5 0 0 0 0 .5 0 0 0 .35 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+* { box-sizing: border-box; margin: 0; }
+[hidden] { display: none !important; } /* beats any display: rule below */
+
+html, body {
+  height: 100%;
+  background: transparent; /* the window itself is invisible; only the card shows */
+  overflow: hidden;
+  user-select: none;
+}
+
+body {
+  font-family: "Archivo", "Segoe UI Variable", "Segoe UI", sans-serif;
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+.card {
+  position: absolute;
+  inset: 0;
+  padding: 20px 24px;
+  border-radius: 18px;
+  background: var(--paper);
+  isolation: isolate; /* keeps ink blending on the paper, not the desktop */
+  overflow: hidden;
+  cursor: move;       /* tells you it can be dragged... */
+}
+.is-locked .card { cursor: default; } /* ...until you lock it from the tray */
+
+.card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1; /* above the card's background, below its content */
+  background: var(--grain);
+  mix-blend-mode: overlay;
+  pointer-events: none;
+}
+
+/* The off-register print: text in ink A + a copy in ink B nudged right and down. */
+.print {
+  position: relative;
+  display: inline-block;
+  color: var(--accent-a);
+  font-weight: 800;
+  font-stretch: 125%;
+  font-variant-numeric: tabular-nums;
+  line-height: 0.9;
+  letter-spacing: -0.02em;
+}
+.print::after {
+  content: attr(data-text);
+  position: absolute;
+  inset: 0;
+  color: var(--accent-b);
+  transform: translate(0.04em, 0.028em);
+  mix-blend-mode: var(--blend); /* how overlapping inks mix */
+  pointer-events: none;
+}
+/* On dark cards, blended inks wash out; tuck ink B behind ink A instead. */
+[data-theme="dark"] .print::after { z-index: -1; mix-blend-mode: normal; }
+
+.muted { color: var(--muted); }
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+button:focus-visible, input:focus-visible {
+  outline: 2px solid var(--accent-b);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.btn {
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: var(--accent-a);
+  color: var(--paper-solid);
+  font-size: 13px;
+  font-weight: 600;
+}
+.btn:hover { filter: brightness(1.12); }
+
+.note { font-size: 13px; line-height: 1.45; color: var(--muted); }
+
+/* ---------- Clock ---------- */
+.clock { display: flex; flex-direction: column; justify-content: center; height: 100%; gap: 14px; }
+.clock .print { font-size: 88px; }
+.clock .period { font-size: 18px; font-weight: 600; margin-left: 10px; color: var(--ink); }
+.clock-date { font-size: 17px; font-weight: 500; }
+
+/* ---------- Now playing ---------- */
+.np { display: grid; grid-template-columns: 106px 1fr; gap: 18px; height: 100%; align-items: center; }
+
+.np-art {
+  position: relative;
+  width: 106px;
+  aspect-ratio: 1;
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--accent-b);
+}
+/* Duotone: greyscale art multiplied onto ink B, then shadows lifted to ink A. */
+.np-art img { width: 100%; height: 100%; object-fit: cover; filter: grayscale(1) contrast(1.15); mix-blend-mode: multiply; }
+.np-art::after { content: ""; position: absolute; inset: 0; background: var(--accent-a); mix-blend-mode: lighten; }
+.np-art:hover img { filter: none; mix-blend-mode: normal; } /* hover reveals the real cover */
+.np-art:hover::after { opacity: 0; }
+.np-art .glyph { position: absolute; inset: 0; display: grid; place-items: center; z-index: 1; color: var(--paper-solid); font-weight: 800; font-stretch: 125%; font-size: 40px; }
+
+.np-body { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.np-title, .np-artist { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.np-title { font-size: 17px; font-weight: 700; }
+.np-artist { font-size: 14px; color: var(--muted); }
+
+.np-bar { height: 4px; margin-top: 10px; border-radius: 2px; background: var(--rule); overflow: hidden; }
+.np-bar span { display: block; height: 100%; width: 0; background: var(--accent-b); }
+.np-row { display: flex; align-items: center; justify-content: space-between; margin-top: 6px; }
+.np-time { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.np-controls { display: flex; align-items: center; gap: 4px; }
+.np-controls button { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 50%; color: var(--accent-a); }
+.np-controls button:hover { background: var(--rule); }
+.np-controls [data-action="toggle"] { background: var(--accent-a); color: var(--paper-solid); }
+.np-controls [data-action="toggle"]:hover { filter: brightness(1.12); }
+.np-controls svg { width: 16px; height: 16px; fill: currentColor; }
+
+.np.is-empty .np-bar, .np.is-empty .np-row { visibility: hidden; }
+
+/* ---------- Weather ---------- */
+.wx { display: flex; flex-direction: column; justify-content: space-between; height: 100%; }
+.wx-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.wx .print { font-size: 80px; }
+.wx-side { text-align: right; padding-top: 4px; display: flex; flex-direction: column; gap: 3px; align-items: flex-end; }
+.wx-cond { font-size: 18px; font-weight: 650; }
+.wx-city { font-size: 14px; color: var(--muted); padding: 0; }
+.wx-city:hover { color: var(--ink); text-decoration: underline dotted; text-underline-offset: 3px; }
+.wx-feels { font-size: 13px; color: var(--muted); }
+
+.wx-hours { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; align-items: end; }
+.wx-hour { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.wx-hour b { font-size: 14px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.wx-hour i { display: block; width: 100%; max-width: 30px; border-radius: 3px 3px 0 0; background: var(--accent-b); }
+.wx-hour small { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.wx-form { display: flex; flex-direction: column; justify-content: center; gap: 10px; height: 100%; }
+.wx-form label { font-size: 15px; font-weight: 600; }
+.wx-form input {
+  font: inherit; font-size: 16px; padding: 9px 12px;
+  border: 1.5px solid var(--rule); border-radius: 8px; background: transparent; color: var(--ink);
+}
+
+/* ---------- Calendar ---------- */
+.cal { display: flex; flex-direction: column; height: 100%; }
+.cal-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 12px; }
+.cal-month { font-size: 42px; font-weight: 800; font-stretch: 62%; line-height: 1; color: var(--ink); letter-spacing: -0.01em; }
+.cal-year { font-size: 15px; font-weight: 500; color: var(--muted); }
+
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); row-gap: 2px; text-align: center; }
+.cal-dow { font-size: 12px; color: var(--muted); padding-bottom: 6px; }
+.cal-head-side { display: flex; align-items: center; gap: 10px; }
+.cal-add { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%; background: var(--accent-a); color: var(--paper-solid); }
+.cal-add:hover { filter: brightness(1.12); }
+.cal-add svg { width: 14px; height: 14px; fill: currentColor; }
+
+.cal-day {
+  position: relative; height: 34px; display: grid; place-items: center;
+  font-size: 14px; font-variant-numeric: tabular-nums; cursor: pointer;
+}
+.cal-day:disabled { cursor: inherit; color: inherit; }
+.cal-day span { width: 27px; height: 27px; display: grid; place-items: center; border-radius: 50%; }
+.cal-day:not(:disabled):hover span { background: var(--rule); }
+.cal-day.is-picked span { box-shadow: inset 0 0 0 2px var(--accent-b); }
+.cal-day.is-other { color: var(--muted); opacity: 0.45; }
+.cal-day.is-today span, .cal-day.is-today:hover span { background: var(--accent-a); color: var(--paper-solid); font-weight: 700; }
+.cal-day.has-event::after { content: ""; position: absolute; bottom: -1px; width: 4px; height: 4px; border-radius: 50%; background: var(--accent-b); }
+
+.cal-events { margin-top: auto; border-top: 1px solid var(--rule); padding-top: 10px; display: flex; flex-direction: column; }
+.cal-event { display: grid; grid-template-columns: 92px 1fr; gap: 10px; padding: 6px 0; font-size: 14px; }
+.cal-event + .cal-event { border-top: 1px solid var(--rule); }
+.cal-when { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.cal-what { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 550; }
+.cal-foot { margin-top: auto; border-top: 1px solid var(--rule); padding-top: 12px; display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+.cal-foot code { font-size: 11px; word-break: break-all; }
+.cal-dot { display: inline-block; width: 7px; height: 7px; margin-right: 7px; border-radius: 50%; vertical-align: 1px; }
+
+.cal-form-wrap { margin-top: auto; border-top: 1px solid var(--rule); padding-top: 10px; }
+.cal-form { display: flex; flex-direction: column; gap: 8px; }
+.cal-form-row { display: flex; gap: 8px; }
+.cal-form-row > input, .cal-form-row > select { flex: 1; min-width: 0; }
+.cal-form input, .cal-form select {
+  font: inherit; font-size: 13px; padding: 6px 8px; height: 32px;
+  border: 1.5px solid var(--rule); border-radius: 7px; background: transparent; color: var(--ink);
+}
+.cal-form select:disabled { opacity: 0.45; }
+.cal-form .btn { padding: 0 14px; height: 32px; }
+.btn-quiet { padding: 0 10px; height: 32px; font-size: 13px; font-weight: 600; color: var(--muted); border-radius: 8px; }
+.btn-quiet:hover { color: var(--ink); background: var(--rule); }
+.cal-form-msg { font-size: 12px; margin: 0; }
