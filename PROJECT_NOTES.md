@@ -1,0 +1,369 @@
+# Desk Widgets: Project Notes
+
+Everything important about how this project works, why it's built this way, and how to maintain it.
+
+---
+
+## 1. Overview
+
+**Desk Widgets** is a Windows 11 desktop app that shows four widgets directly on the desktop:
+
+| Widget | What it shows | Data source |
+|---|---|---|
+| **Clock** | Time and date | System clock |
+| **Now playing** | Current song, album art, progress, play/pause/skip | Windows media session API |
+| **Weather** | Temperature, conditions, high/low, next 6 hours | Open-Meteo (free, no API key) |
+| **Calendar** | Month view, upcoming events, add events | Google Calendar API |
+
+- **Repo:** https://github.com/sevensixteeeen/desk-widgets
+- **Privacy/terms site (for Google):** https://sevensixteeeen.github.io/desk-widgets-site/
+
+---
+
+## 2. Features
+
+- Widgets sit **behind all apps** on the desktop and **survive Win+D** (Show desktop).
+- **Colours come from your wallpaper** and update automatically when the wallpaper changes.
+- **Now playing** works with Spotify, YouTube in Chrome, or any app that reports media to Windows, with no login.
+- **Calendar** shows events from every calendar ticked in the Google Calendar sidebar (holidays, shared, work). Each event has a dot in its calendar's colour.
+- **Add events** from the desktop: click a day or **+**. Leave the time empty for an all-day event.
+- **Tray menu:** Lock widgets, Open at login, Quit.
+- **Drag to move.** Positions are remembered.
+- **One setting resizes everything** (`scale` in `config.js`).
+
+---
+
+## 3. Tech stack and why
+
+| Choice | Why |
+|---|---|
+| **Tauri 2** | Uses about 150–250 MB of RAM, versus 400–600 MB for Electron. The UI is still plain HTML/CSS. |
+| **Rust backend** | Direct access to Windows APIs (media, window ownership) and reliable background work. |
+| **Plain HTML/CSS/JS, no bundler** | Nothing to compile on the frontend; `withGlobalTauri` exposes `window.__TAURI__`. |
+| **WebView2** | Built into Windows 11, so nothing extra to install. |
+| **Open-Meteo** | Free, no API key, supports browser requests directly. |
+| **Archivo (variable font)** | Width axis from 62% to 125%. Expanded for the big numbers, condensed for the month name. Bundled locally, so it works offline. |
+
+Options considered and rejected: **Electron** (too heavy for always-on widgets) and **Python + PySide6** (glass/blur styling is harder and it's less polished).
+
+---
+
+## 4. Architecture
+
+```
+┌──────────────────────── Tauri app (one process) ────────────────────────┐
+│                                                                          │
+│  Rust core (src-tauri/src)                                               │
+│   ├─ media.rs      → Windows media session (now playing, controls, art)  │
+│   ├─ gcal.rs       → Google sign-in, list calendars, read/add events     │
+│   ├─ wallpaper.rs  → reads the current wallpaper file                    │
+│   ├─ settings.rs   → saved settings (lock)                               │
+│   └─ lib.rs        → commands, tray menu, plugins, Win+D fix             │
+│                                                                          │
+│  4 windows (WebView2), all loading src/index.html                        │
+│   clock │ nowplaying │ weather │ calendar                                │
+│   main.js reads the window's *label* and mounts that widget              │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+**JS ↔ Rust communication:**
+
+- **JS → Rust:** `invoke("command_name", { args })`. Commands are defined with `#[tauri::command]` in `lib.rs`. JS camelCase arguments map automatically to Rust snake_case (`timeMin` → `time_min`).
+- **Rust → JS:** `app.emit("event-name", payload)`, received in JS with `onEvent(...)` (e.g. `lock-changed`).
+
+**One page, four windows:** every window loads the same `index.html`. `main.js` checks the window's label (set in `tauri.conf.json`) and runs the matching widget's `mount` function.
+
+---
+
+## 5. Project structure
+
+```
+desk-widgets/
+├─ src/                         Frontend
+│  ├─ index.html                Shared page for every widget window
+│  ├─ main.js                   Widget selection, size (zoom), drag, lock
+│  ├─ api.js                    invoke / events / window helpers + sample data for browser preview
+│  ├─ config.js                 User settings (scale, 12/24h, week start, units)
+│  ├─ theme.js                  Wallpaper → colour palette
+│  ├─ styles.css                Design system and all widget styles
+│  ├─ fonts/archivo.woff2       Bundled variable font (+ licence)
+│  └─ widgets/
+│     ├─ clock.js
+│     ├─ nowplaying.js
+│     ├─ weather.js
+│     └─ calendar.js
+├─ src-tauri/
+│  ├─ tauri.conf.json           Window definitions, app identifier, bundle config
+│  ├─ Cargo.toml                Rust dependencies
+│  ├─ capabilities/default.json Which Tauri APIs the JS side may use
+│  ├─ icons/                    App icons (generated with `npx tauri icon`)
+│  └─ src/
+│     ├─ main.rs                Entry point (hides the console in release builds)
+│     ├─ lib.rs
+│     ├─ media.rs
+│     ├─ gcal.rs
+│     ├─ wallpaper.rs
+│     └─ settings.rs
+├─ .gitignore
+├─ README.md
+└─ package.json                 Only the Tauri CLI
+```
+
+---
+
+## 6. How each part works
+
+### Window setup (`tauri.conf.json`)
+
+Each widget window is `decorations: false` (no frame), `transparent: true`, `shadow: false`, `resizable: false`, `skipTaskbar: true` (no taskbar button) and `alwaysOnBottom: true` (behind other apps).
+
+### Win+D fix (`lib.rs → pin_to_desktop`)
+
+Win+D minimizes every normal window. Windows **owned by the desktop** (`Progman`, the system window that draws desktop icons) count as part of the desktop and stay visible. On startup, each widget's owner is set to `Progman` with `SetWindowLongPtrW(hwnd, GWLP_HWNDPARENT, progman)`.
+
+### Size (`config.js → scale`, `main.js`)
+
+Widgets are designed at full size. `main.js` applies CSS `zoom: scale` to the page and resizes the window by the same factor, so one number resizes everything. Current value: `0.78`.
+
+### Lock (`settings.rs`, tray menu, `main.js`)
+
+Tray → **Lock widgets** → Rust flips `locked` in `settings.json` → emits `lock-changed` → every widget ignores drag attempts. The cursor shows the state: ✥ move when unlocked, a normal arrow when locked. Dragging is started from JS with `startDragging()` on `mousedown`, skipping buttons and inputs.
+
+### Now playing (`media.rs`, `nowplaying.js`)
+
+- Uses the **Global System Media Transport Controls** (the same API as the Windows volume-key media flyout).
+- WinRT calls block, so the commands run inside `spawn_blocking` to keep the main thread free.
+- Apps report playback position only occasionally, so Rust adds the time elapsed since `LastUpdatedTime`, and JS interpolates between polls. Result: a smooth progress bar.
+- JS polls every 1.5 s and fetches album art only when the track changes.
+- The album art is shown as a duotone in the two theme inks; hover to see the original.
+
+### Weather (`weather.js`)
+
+- The city is typed once, geocoded with Open-Meteo, and saved to `localStorage`. Click the city name to change it.
+- Refreshes every 15 minutes.
+- Weather codes (WMO) are mapped to words.
+
+### Calendar (`gcal.rs`, `calendar.js`)
+
+- **Sign-in:** the OAuth "loopback" flow for desktop apps with **PKCE**. Rust starts a temporary local server on `127.0.0.1:<random port>`, opens Google sign-in in the browser, catches the returned `code`, and exchanges it for a **refresh token**. PKCE plus a random `state` value stop an intercepted code from being used by anyone else.
+- **Reading:** lists all calendars (`calendarList`), keeps the ones that are `selected` (ticked in Google Calendar) and not hidden, then fetches events from each one. A calendar that fails is skipped rather than breaking the whole widget. JS sorts the merged list.
+- **Adding:** `POST` to the primary calendar. All-day events use `{"date"}` with the end date set to the **next day** (Google treats the end date as exclusive). Timed events use `{"dateTime"}`.
+- **Scope versioning:** the saved token records `scope_version`. When scopes change (v1 read-only → v2 read + add), the widget shows **Reconnect** instead of failing.
+- An expired or revoked sign-in (`invalid_grant`) deletes the token and asks you to connect again.
+- Event titles are inserted with `textContent`, never `innerHTML`, so they can't inject HTML.
+
+### Wallpaper theme (`wallpaper.rs`, `theme.js`)
+
+1. Rust reads Windows' copy of the current wallpaper at `%APPDATA%\Microsoft\Windows\Themes\TranscodedWallpaper` and returns it only if its modified time changed (cheap to poll).
+2. JS shrinks it to 160×90 px on a canvas.
+3. **Average brightness** decides dark or light cards.
+4. **Average colour** tints the cards.
+5. Vivid pixels are grouped into 36 hue buckets. The strongest becomes **ink A**, and the strongest hue at least 50° away becomes **ink B**.
+6. Lightness is fixed per mode, so text stays readable on any wallpaper.
+7. It checks every 30 s and caches the palette in `localStorage` to avoid a colour flash on startup.
+
+### Autostart (`lib.rs`)
+
+`tauri-plugin-autostart` adds or removes the app in the Windows startup list. Tray → **Open at login**. Turn it on in the **installed** app only; in dev mode it would register the temporary debug build.
+
+---
+
+## 7. Design system
+
+**Concept: two-ink print.** The big numbers (time, temperature) are printed twice, in ink A and ink B, slightly off-register. That offset is the one bold element; everything else stays quiet.
+
+| CSS variable | Role |
+|---|---|
+| `--paper` | Card background (slightly transparent when themed) |
+| `--paper-solid` | Same colour, opaque (text on accent fills) |
+| `--ink` | Main text |
+| `--muted` | Secondary text |
+| `--accent-a` | Ink A: big numbers, buttons, today |
+| `--accent-b` | Ink B: off-register copy, bars, event dots |
+| `--blend` | How the inks mix (`multiply` on light, `screen` on dark) |
+| `--rule` | Hairlines (ink at 15%) |
+
+- Default (no wallpaper): cool paper `#eceef0`, riso blue `#0078bf`, fluorescent pink `#ff48b0`.
+- On dark themes, ink B is placed **behind** ink A instead of blended, because blended inks wash out on dark cards.
+- Paper texture: an SVG noise layer with `mix-blend-mode: overlay`, which works on both light and dark cards.
+
+**Typography:** Archivo only. 800 weight at 125% width for big numbers; 62% width for the month name; regular widths for text.
+
+---
+
+## 8. Configuration
+
+**`src/config.js`** (restart the app after changing):
+
+| Setting | Current | Meaning |
+|---|---|---|
+| `scale` | `0.78` | Widget size (1 = original) |
+| `hour12` | `false` | 12h or 24h clock |
+| `weekStartsOn` | `1` | 0 = Sunday, 1 = Monday |
+| `temperatureUnit` | `"celsius"` | or `"fahrenheit"` |
+| `upcomingEvents` | `3` | Events listed under the calendar |
+
+**`src-tauri/tauri.conf.json`:** window labels, default positions, and base window sizes (already multiplied by `scale`). App identifier: `com.deskwidgets.app`. Don't change the identifier; it decides the AppData folder where the Google files live.
+
+---
+
+## 9. Data and file locations
+
+| What | Where | In Git? |
+|---|---|---|
+| Google OAuth client | `%APPDATA%\com.deskwidgets.app\google_client.json` | **Never** |
+| Google sign-in token | `%APPDATA%\com.deskwidgets.app\google_token.json` | **Never** |
+| Settings (lock) | `%APPDATA%\com.deskwidgets.app\settings.json` | No |
+| Widget positions | Saved by the window-state plugin in the app's config folder | No |
+| Weather city, theme cache | WebView `localStorage` | No |
+
+- Dev mode and the installed app have **separate `localStorage`**, so the weather city has to be entered once in each. Files in `%APPDATA%` are shared.
+- `.gitignore` blocks `node_modules/`, `src-tauri/target/`, `src-tauri/gen/`, `google_client.json`, `google_token.json`, `client_secret*.json`, `.env*`, `settings.json`, and editor clutter.
+
+---
+
+## 10. Google Cloud setup
+
+**Google Cloud project:** Calendar API enabled. The API is free and no billing account is needed.
+
+**Google Auth Platform:**
+
+| Page | Setting |
+|---|---|
+| Branding | App name "Desk Widgets", home page, privacy policy and terms links (below). **No logo.** |
+| Audience | External, **published (In production)** |
+| Data Access | `.../auth/calendar.readonly` and `.../auth/calendar.events` |
+| Clients | Desktop app client, whose JSON was downloaded as `google_client.json` |
+
+**Branding links** (hosted on GitHub Pages from the `desk-widgets-site` repo):
+
+- Home: `https://sevensixteeeen.github.io/desk-widgets-site/`
+- Privacy: `https://sevensixteeeen.github.io/desk-widgets-site/privacy.html`
+- Terms: `https://sevensixteeeen.github.io/desk-widgets-site/terms.html`
+- Authorized domain: `sevensixteeeen.github.io`
+
+**Lessons learned:**
+
+- In **Testing** mode, refresh tokens expire after **7 days**. Publishing fixes that.
+- **Publishing requires** a home page, privacy policy and authorized domain on the Branding page.
+- **Uploading a logo triggers brand verification.** Leave it empty.
+- The **"Google hasn't verified this app"** screen is expected for a personal app: Advanced → Go to Desk Widgets.
+- On the permission screen, **tick every checkbox**, because Google lets you grant scopes one by one.
+- If the scopes change, update the **privacy page** too. It must describe what the app actually does.
+
+---
+
+## 11. Development workflow
+
+Run from the project root (the folder with `package.json`):
+
+```powershell
+npm install            # once, installs the Tauri CLI
+npm run tauri dev      # run with auto-rebuild
+npm run tauri build    # release build + installers
+cargo fmt              # (inside src-tauri) format Rust code
+```
+
+- **Frontend changes:** click a widget and press `Ctrl+R` to reload it.
+- **Rust changes:** rebuild automatically in dev mode.
+- **Dev tools:** right-click a widget → **Inspect** (dev mode only).
+- **Design in a normal browser:** serve `src/` with any static server and open `index.html?w=clock` (or `nowplaying`, `weather`, `calendar`). `api.js` fills in sample data. Add `&wp=image.jpg` to test the wallpaper theme with any image.
+
+**Prerequisites on a new PC:** Visual Studio Build Tools with **Desktop development with C++**, Rust (`rustup`), and Node.js LTS.
+
+---
+
+## 12. Build, install and update
+
+1. `npm run tauri build` (5–15 minutes).
+2. The installer is at `src-tauri\target\release\bundle\nsis\Desk Widgets_0.1.0_x64-setup.exe` (an MSI is also made in `bundle\msi\`).
+3. Run it. On **"Windows protected your PC"** (the app isn't code-signed), click **More info → Run anyway**.
+4. Tray → tick **Open at login**.
+
+**Updating:** change the code → build → run the new installer (it replaces the old one). Bump `version` in `tauri.conf.json` and `Cargo.toml` for clarity.
+
+Don't run `npm run tauri dev` while the installed app is open, or you'll get two sets of widgets.
+
+---
+
+## 13. Git and GitHub
+
+- The app repo is `sevensixteeeen/desk-widgets`, which is separate from `desk-widgets-site` (the privacy site). **Never push the app into the site repo.**
+- Commit and push changes:
+
+```powershell
+git add .
+git commit -m "Describe the change"
+git push
+```
+
+- **Check for secrets before pushing:**
+
+```powershell
+git grep --cached -n -e "GOCSPX" -e "apps.googleusercontent.com" -e "gmail.com"
+```
+
+  No output means it's clean. `GOCSPX` is the prefix of Google client secrets.
+
+---
+
+## 14. Troubleshooting (issues already hit and fixed)
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `npm install` → ENOENT package.json | Terminal in the wrong folder (zip extracted into a nested folder) | `cd` into the folder that contains `package.json` |
+| `cargo metadata … program not found` | Rust not installed, or terminal opened before installing | Install Rust, then restart VS Code |
+| winget Build Tools "exit code 1" | Already installed; the upgrade failed | Visual Studio Installer → Modify → tick **Desktop development with C++** |
+| Widgets not visible | Win+D or Show desktop hides them; they sit behind other windows | Minimize apps normally (fixed permanently by the Win+D fix) |
+| ♪ icon shown over album art | CSS `display` overrode the `hidden` attribute | `[hidden] { display: none !important; }` |
+| Google "Publish app" greyed out | Branding page incomplete | Add home page, privacy, terms and authorized domain |
+| Branding verification issues | A logo was uploaded, and the home page didn't exist yet | Remove the logo; publish the GitHub Pages site |
+| `git push` → Repository not found | The GitHub repo hadn't been created | Create it at github.com/new (no README), push again |
+| VS Code opens the `.exe` as text | VS Code can't run programs | Run it from the terminal with `& ".\path\to\setup.exe"` or from File Explorer |
+
+---
+
+## 15. Known limitations
+
+- **Windows only:** the media API, Win+D fix and wallpaper path are Windows-specific.
+- New events always go to the **primary** calendar.
+- Only the **current month** is shown (no month navigation yet).
+- The calendar fetches from the start of the month's grid to about 2 weeks after month end.
+- The wallpaper is re-read as a full image when it changes, which causes a brief memory spike.
+- The installer is **unsigned**, so SmartScreen shows a warning on install.
+
+---
+
+## 16. Performance
+
+Typical RAM is **~150–250 MB** in total: Rust core ~10–20 MB, WebView2 shared processes ~60–100 MB, and ~20–40 MB per widget.
+
+This is normal as long as it stays **flat over time**. If it climbs by hundreds of MB over a day, that's a leak worth investigating.
+
+Options if you want it lower:
+
+| Option | Effect |
+|---|---|
+| Resize the wallpaper in Rust before sending it to JS | Removes the spike when the wallpaper changes; worth doing |
+| Poll now-playing every 3 s instead of 1.5 s | Less CPU |
+| Merge all widgets into one window | ~30–40% less RAM, but much more complex |
+
+---
+
+## 17. Decisions made along the way
+
+- **Design:** deliberately *not* a macOS copy. It started as a light risograph look and became wallpaper-adaptive.
+- **Alarms and DND:** built, then dropped, because Windows' own Clock app and Focus already do this well.
+- **Brand verification:** skipped; the app is for personal use.
+- **Dark themes:** ink B sits behind ink A instead of blending, for crisp numbers.
+
+---
+
+## 18. Ideas for later
+
+- Month navigation (previous/next) in the calendar.
+- Choose which calendar new events go into.
+- Resize the wallpaper in Rust before sending it (memory).
+- Keyboard shortcut to lock/unlock.
+- Per-widget show/hide from the tray.
+- Code-sign the installer to remove the SmartScreen warning.
