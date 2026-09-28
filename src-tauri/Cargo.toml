@@ -16,6 +16,7 @@ tauri-plugin-opener = "2"          # opens the Google sign-in page in your brows
 tauri-plugin-window-state = "2"    # remembers where you dragged each widget
 tauri-plugin-autostart = "2"       # "Open at login"
 tauri-plugin-global-shortcut = "2" # Ctrl+Alt+L to lock/unlock
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] } # shrink the wallpaper
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }

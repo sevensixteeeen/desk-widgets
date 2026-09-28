@@ -13,7 +13,7 @@ Everything important about how this project works, why it's built this way, and 
 | **Clock** | Time and date | System clock |
 | **Now playing** | Current song, album art, progress, play/pause/skip | Windows media session API |
 | **Weather** | Temperature, conditions, high/low, next 6 hours | Open-Meteo (free, no API key) |
-| **Calendar** | Month view, upcoming events, add events | Google Calendar API |
+| **Calendar** | Month view with navigation, upcoming events, add events to any of your calendars | Google Calendar API |
 
 - **Repo:** https://github.com/sevensixteeeen/desk-widgets
 - **Privacy/terms site (for Google):** https://sevensixteeeen.github.io/desk-widgets-site/
@@ -26,8 +26,10 @@ Everything important about how this project works, why it's built this way, and 
 - **Colours come from your wallpaper** and update automatically when the wallpaper changes.
 - **Now playing** works with Spotify, YouTube in Chrome, or any app that reports media to Windows, with no login.
 - **Calendar** shows events from every calendar ticked in the Google Calendar sidebar (holidays, shared, work). Each event has a dot in its calendar's colour.
-- **Add events** from the desktop: click a day or **+**. Leave the time empty for an all-day event.
-- **Tray menu:** Lock widgets, Open at login, Quit.
+- **Browse months** with ‹ ›, or the mouse wheel over the dates; **Today** jumps back.
+- **Add events** from the desktop: click a day or **+**, pick which calendar, and leave the time empty for an all-day event.
+- **Tray menu:** Show widgets (tick/untick each one), Lock widgets, Open at login, Quit.
+- **Ctrl+Alt+L** locks/unlocks dragging from anywhere, with a brief "Locked"/"Unlocked" message.
 - **Drag to move.** Positions are remembered.
 - **One setting resizes everything** (`scale` in `config.js`).
 
@@ -57,8 +59,8 @@ Options considered and rejected: **Electron** (too heavy for always-on widgets) 
 │   ├─ media.rs      → Windows media session (now playing, controls, art)  │
 │   ├─ gcal.rs       → Google sign-in, list calendars, read/add events     │
 │   ├─ wallpaper.rs  → reads the current wallpaper file                    │
-│   ├─ settings.rs   → saved settings (lock)                               │
-│   └─ lib.rs        → commands, tray menu, plugins, Win+D fix             │
+│   ├─ settings.rs   → saved settings (lock, hidden widgets)               │
+│   └─ lib.rs        → commands, tray menu, shortcut, plugins, Win+D fix   │
 │                                                                          │
 │  4 windows (WebView2), all loading src/index.html                        │
 │   clock │ nowplaying │ weather │ calendar                                │
@@ -70,6 +72,7 @@ Options considered and rejected: **Electron** (too heavy for always-on widgets) 
 
 - **JS → Rust:** `invoke("command_name", { args })`. Commands are defined with `#[tauri::command]` in `lib.rs`. JS camelCase arguments map automatically to Rust snake_case (`timeMin` → `time_min`).
 - **Rust → JS:** `app.emit("event-name", payload)`, received in JS with `onEvent(...)` (e.g. `lock-changed`).
+- **Rust only:** the tray menu, showing/hiding windows and the global shortcut never touch JS; Rust handles them directly.
 
 **One page, four windows:** every window loads the same `index.html`. `main.js` checks the window's label (set in `tauri.conf.json`) and runs the matching widget's `mount` function.
 
@@ -115,7 +118,7 @@ desk-widgets/
 
 ### Window setup (`tauri.conf.json`)
 
-Each widget window is `decorations: false` (no frame), `transparent: true`, `shadow: false`, `resizable: false`, `skipTaskbar: true` (no taskbar button) and `alwaysOnBottom: true` (behind other apps).
+Each widget window is `decorations: false` (no frame), `transparent: true`, `shadow: false`, `resizable: false`, `skipTaskbar: true` (no taskbar button), `alwaysOnBottom: true` (behind other apps) and `visible: false`. Windows start invisible; at startup Rust shows only the ones you haven't hidden, so hidden widgets never flash on screen.
 
 ### Win+D fix (`lib.rs → pin_to_desktop`)
 
@@ -125,9 +128,21 @@ Win+D minimizes every normal window. Windows **owned by the desktop** (`Progman`
 
 Widgets are designed at full size. `main.js` applies CSS `zoom: scale` to the page and resizes the window by the same factor, so one number resizes everything. Current value: `0.78`.
 
-### Lock (`settings.rs`, tray menu, `main.js`)
+### Lock (`lib.rs → toggle_lock`, `settings.rs`, `main.js`)
 
-Tray → **Lock widgets** → Rust flips `locked` in `settings.json` → emits `lock-changed` → every widget ignores drag attempts. The cursor shows the state: ✥ move when unlocked, a normal arrow when locked. Dragging is started from JS with `startDragging()` on `mousedown`, skipping buttons and inputs.
+Two ways in, one function: the tray's **Lock widgets** item and the global shortcut **Ctrl+Alt+L** both call `toggle_lock()`, which flips `locked` in `settings.json`, updates the tray tick, and emits `lock-changed`. Every widget then ignores drag attempts.
+
+- **Global shortcut:** `tauri-plugin-global-shortcut`, registered in Rust at startup with `on_shortcut(LOCK_SHORTCUT, ...)`. The handler acts only on `ShortcutState::Pressed` (Windows reports press and release). The library registers with Windows' no-repeat flag, so holding the keys doesn't flicker the lock.
+- **If the shortcut is taken** by another app, registering fails; the error is logged and the app carries on (the tray item still works).
+- **Feedback:** on `lock-changed`, each widget shows a "Locked"/"Unlocked" toast for 1.2 s. The toast sits on `<body>`, outside the card, so a widget redrawing its card can't remove it. No toast at startup.
+- **Cursor:** ✥ move when unlocked, a normal arrow when locked. Dragging is started from JS with `startDragging()` on `mousedown`, skipping buttons and inputs.
+
+### Show / hide widgets (`lib.rs → toggle_widget`, `settings.rs`)
+
+- Tray → **Show widgets** submenu, one tickbox per widget. The list lives in one constant, `WIDGETS` (label + menu name), so a new widget is a one-line addition.
+- Menu item ids are `show:<label>` (e.g. `show:weather`). The click handler uses `strip_prefix("show:")`, so one piece of code handles every widget.
+- `toggle_widget()` calls `window.hide()` / `window.show()` and keeps the list of hidden labels in `settings.json` (`"hidden": ["weather"]`), so the choice survives restarts.
+- Hidden widgets are hidden, not closed: their pages keep running in the background.
 
 ### Now playing (`media.rs`, `nowplaying.js`)
 
@@ -146,11 +161,24 @@ Tray → **Lock widgets** → Rust flips `locked` in `settings.json` → emits `
 ### Calendar (`gcal.rs`, `calendar.js`)
 
 - **Sign-in:** the OAuth "loopback" flow for desktop apps with **PKCE**. Rust starts a temporary local server on `127.0.0.1:<random port>`, opens Google sign-in in the browser, catches the returned `code`, and exchanges it for a **refresh token**. PKCE plus a random `state` value stop an intercepted code from being used by anyone else.
-- **Reading:** lists all calendars (`calendarList`), keeps the ones that are `selected` (ticked in Google Calendar) and not hidden, then fetches events from each one. A calendar that fails is skipped rather than breaking the whole widget. JS sorts the merged list.
-- **Adding:** `POST` to the primary calendar. All-day events use `{"date"}` with the end date set to the **next day** (Google treats the end date as exclusive). Timed events use `{"dateTime"}`.
+- **Reading:** lists all calendars (`calendarList`, via the shared `calendar_list()` helper), keeps the ones that are `selected` (ticked in Google Calendar) and not hidden, then fetches events from each one. A calendar that fails is skipped rather than breaking the whole widget. JS sorts the merged list.
+- **Month navigation:** JS keeps the month on screen (`view`) separate from today.
+  - The **upcoming list** always starts from today, whatever month you're viewing.
+  - Each refresh makes one request covering the current month's grid plus the next 45 days, for both the grid dots and the upcoming list.
+  - **Other months** are fetched only when you open them, then cached (`monthCache`). A short 250 ms wait means clicking › five times quickly fetches one month, not five.
+  - Everything is re-fetched every 10 minutes and after adding an event, so the cache never goes stale.
+  - At midnight, if you were on the current month and a new month starts, the view follows.
+- **Header:** two lines, with the year and a **Today** button (visible only on other months) above the month name and the ‹ › + controls.
+- **Adding:**
+  - `gcal_calendars` returns the calendars you can write to (`accessRole` owner or writer, ticked in the sidebar), with your main calendar first.
+  - The form shows a picker with the calendar's colour dot, only when there's more than one. Your last choice is remembered in `localStorage`; the first time, your main calendar is chosen.
+  - `create_event` posts to the chosen calendar ID. IDs contain `@` and `#`, so the URL is built with `path_segments_mut()`, never by pasting text together.
+  - All-day events use `{"date"}` with the end date set to the **next day** (Google treats the end date as exclusive). Timed events use `{"dateTime"}`.
+  - The duration box says **All day** until a time is typed. The message line (saving, errors) only appears when needed, stays on one line, and shows the full text on hover.
+- **Size:** the calendar widget is 320×490 before scaling, tall enough that the add form and an error line always fit.
 - **Scope versioning:** the saved token records `scope_version`. When scopes change (v1 read-only → v2 read + add), the widget shows **Reconnect** instead of failing.
 - An expired or revoked sign-in (`invalid_grant`) deletes the token and asks you to connect again.
-- Event titles are inserted with `textContent`, never `innerHTML`, so they can't inject HTML.
+- Event titles and calendar names are inserted as plain text (`textContent`, `new Option(name, id)`), never with `innerHTML`, so they can't inject HTML.
 
 ### Wallpaper theme (`wallpaper.rs`, `theme.js`)
 
@@ -203,6 +231,10 @@ Tray → **Lock widgets** → Rust flips `locked` in `settings.json` → emits `
 | `temperatureUnit` | `"celsius"` | or `"fahrenheit"` |
 | `upcomingEvents` | `3` | Events listed under the calendar |
 
+**Lock shortcut:** `LOCK_SHORTCUT` at the top of the Lock section in `src-tauri/src/lib.rs` (default `"ctrl+alt+L"`). It's registered in Rust at startup, so it lives there rather than in `config.js`; change it, then rebuild. Also update the menu label text (`Some("Ctrl+Alt+L")`) to match.
+
+**`%APPDATA%\com.deskwidgets.app\settings.json`** (written by the app): `locked` and `hidden` (list of hidden widget labels).
+
 **`src-tauri/tauri.conf.json`:** window labels, default positions, and base window sizes (already multiplied by `scale`). App identifier: `com.deskwidgets.app`. Don't change the identifier; it decides the AppData folder where the Google files live.
 
 ---
@@ -213,9 +245,9 @@ Tray → **Lock widgets** → Rust flips `locked` in `settings.json` → emits `
 |---|---|---|
 | Google OAuth client | `%APPDATA%\com.deskwidgets.app\google_client.json` | **Never** |
 | Google sign-in token | `%APPDATA%\com.deskwidgets.app\google_token.json` | **Never** |
-| Settings (lock) | `%APPDATA%\com.deskwidgets.app\settings.json` | No |
+| Settings (lock, hidden widgets) | `%APPDATA%\com.deskwidgets.app\settings.json` | No |
 | Widget positions | Saved by the window-state plugin in the app's config folder | No |
-| Weather city, theme cache | WebView `localStorage` | No |
+| Weather city, theme cache, last calendar used | WebView `localStorage` | No |
 
 - Dev mode and the installed app have **separate `localStorage`**, so the weather city has to be entered once in each. Files in `%APPDATA%` are shared.
 - `.gitignore` blocks `node_modules/`, `src-tauri/target/`, `src-tauri/gen/`, `google_client.json`, `google_token.json`, `client_secret*.json`, `.env*`, `settings.json`, and editor clutter.
@@ -307,7 +339,33 @@ git grep --cached -n -e "GOCSPX" -e "apps.googleusercontent.com" -e "gmail.com"
 
 ---
 
-## 14. Troubleshooting (issues already hit and fixed)
+## 14. Sharing with other Windows users
+
+**Send the installer** (`Desk Widgets_0.1.0_x64-setup.exe`, about 3 MB) by Drive, WhatsApp, USB, or zipped by email. Better: attach it to a **GitHub Release** on the repo and share the link, so every version lives in one place.
+
+**What the other person does:**
+
+1. Run the installer. On SmartScreen, click **More info → Run anyway**.
+2. Open **Desk Widgets** from the Start menu.
+3. Tray → **Open at login** (optional).
+4. Type their city into the weather widget.
+
+**Requirements:** 64-bit Windows 10 or 11. Windows 11 already has WebView2; on Windows 10 the installer downloads it if missing (needs internet).
+
+**Calendar for other people:**
+
+| Option | How | Trade-off |
+|---|---|---|
+| **A. Share your client file** | Send `google_client.json` **privately** (never in a public release). They save it to `%APPDATA%\com.deskwidgets.app\` and sign in with their own Google account. | They see the "unverified app" screen. Each person counts toward Google's 100-user limit for unverified apps. Only share with people you trust. |
+| **B. Their own client** | They follow the Google Cloud setup in the README. | Fully independent, but about 20 minutes of setup. |
+
+Each person's calendar data goes directly between their PC and Google; nobody else can see it.
+
+**Keep in mind:** the app is only tested on one PC (Windows 11, single monitor), and updates are manual. They run the new installer, which replaces the old version.
+
+---
+
+## 15. Troubleshooting (issues already hit and fixed)
 
 | Symptom | Cause | Fix |
 |---|---|---|
@@ -320,21 +378,23 @@ git grep --cached -n -e "GOCSPX" -e "apps.googleusercontent.com" -e "gmail.com"
 | Branding verification issues | A logo was uploaded, and the home page didn't exist yet | Remove the logo; publish the GitHub Pages site |
 | `git push` → Repository not found | The GitHub repo hadn't been created | Create it at github.com/new (no README), push again |
 | VS Code opens the `.exe` as text | VS Code can't run programs | Run it from the terminal with `& ".\path\to\setup.exe"` or from File Explorer |
+| Rust error "`X` is defined multiple times" / "redefined here" | Pasted new code next to the old code instead of replacing it | Delete the duplicate; use **Ctrl+Shift+O** in VS Code to spot items listed twice |
+| A new feature does nothing | Edits weren't saved (white dot on the tab), or were made in another copy of the project | Save all (**Ctrl+K, S**); check the tab's path is the inner `desk-widgets\desk-widgets` folder |
 
 ---
 
-## 15. Known limitations
+## 16. Known limitations
 
 - **Windows only:** the media API, Win+D fix and wallpaper path are Windows-specific.
-- New events always go to the **primary** calendar.
-- Only the **current month** is shown (no month navigation yet).
-- The calendar fetches from the start of the month's grid to about 2 weeks after month end.
+- The upcoming list looks 45 days ahead; events further out only show as dots when you navigate to that month.
+- Changing the lock shortcut means editing `lib.rs` and rebuilding (there's no settings window).
+- Hidden widgets keep running in the background (their windows are hidden, not closed).
 - The wallpaper is re-read as a full image when it changes, which causes a brief memory spike.
 - The installer is **unsigned**, so SmartScreen shows a warning on install.
 
 ---
 
-## 16. Performance
+## 17. Performance
 
 Typical RAM is **~150–250 MB** in total: Rust core ~10–20 MB, WebView2 shared processes ~60–100 MB, and ~20–40 MB per widget.
 
@@ -350,20 +410,51 @@ Options if you want it lower:
 
 ---
 
-## 17. Decisions made along the way
+## 18. Decisions made along the way
 
 - **Design:** deliberately *not* a macOS copy. It started as a light risograph look and became wallpaper-adaptive.
 - **Alarms and DND:** built, then dropped, because Windows' own Clock app and Focus already do this well.
 - **Brand verification:** skipped; the app is for personal use.
+- **Code-signing:** skipped. It only removes the SmartScreen warning for people downloading the installer, which doesn't matter for personal use. Revisit only if the app is ever distributed widely.
 - **Dark themes:** ink B sits behind ink A instead of blending, for crisp numbers.
+- **Calendar header on two lines:** "September 2027" plus five controls didn't fit in one line of a 250 px-wide card.
+- **Shared functions for shared actions:** the tray item and the shortcut both call `toggle_lock()`; `events()` and `calendars()` both use `calendar_list()`.
+- **Learning approach:** later features were built partly by hand (typing the change, then a line-by-line review) to learn Rust and Tauri, not just copy code.
 
 ---
 
-## 18. Ideas for later
+## 19. Changelog
 
-- Month navigation (previous/next) in the calendar.
-- Choose which calendar new events go into.
-- Resize the wallpaper in Rust before sending it (memory).
-- Keyboard shortcut to lock/unlock.
-- Per-widget show/hide from the tray.
-- Code-sign the installer to remove the SmartScreen warning.
+| Date | Change |
+|---|---|
+| 2026-09-25 | First version: 4 widgets, wallpaper theme, lock, Win+D fix, Google Calendar read + add, installer, autostart |
+| 2026-09-27 | Calendar month navigation (‹ ›, mouse wheel, Today) |
+| 2026-09-28 | Show/hide widgets from the tray, calendar picker for new events, lock shortcut (Ctrl+Alt+L) with toast |
+
+## 20. Ideas for later
+
+- **Next:** resize the wallpaper in Rust before sending it to JS (removes the memory spike). Planned as a hands-on lesson with the `image` crate.
+- Poll now-playing less often if CPU use matters.
+- Use it for a few days and note what's missing, before adding new widgets.
+
+## 21. If it ever becomes a product
+
+Not planned right now; these notes are here so the thinking isn't lost.
+
+**Market:** crowded with free options (Rainmeter, Lively Wallpaper, free Microsoft Store widget apps, Windows' own Widgets board). People do pay for polished desktop customization (Wallpaper Engine on Steam). The differentiator would be zero-config polish: wallpaper-adaptive themes, now playing with any app, a two-way calendar, low RAM.
+
+**Blockers before selling:**
+
+- A settings window (no editing `config.js`).
+- Google OAuth verification (`calendar.events` is a sensitive scope; unverified apps are capped at 100 users).
+- Open-Meteo's free tier is non-commercial; a paid app needs their commercial plan or another provider.
+- Code-signing or Microsoft Store distribution, so there's no SmartScreen warning.
+- Auto-updates (Tauri updater plugin).
+- Testing on Windows 10, multiple monitors and different display scaling.
+- Don't market it as a "Spotify widget" (trademark); say "works with any music app".
+
+**Best-fit model:** freemium with a one-time Pro unlock (~$3–5), or one-time paid on Steam or the Microsoft Store. Subscriptions are a poor fit.
+
+**Steam basics:** Steamworks signup, $100 fee per app (returned after $1,000 in sales), tax/bank/identity paperwork, a waiting period of roughly 3–4 weeks after paying, a public Coming Soon page for at least 2 weeks, 3–5 business days of review per submission, and Steam keeps 30% of sales. Register as **Software** and upload the built app folder with SteamPipe, not the installer.
+
+**Validate first:** record a 30-second demo (changing the wallpaper and the widgets recolouring), post it to r/desktops, r/Windows11 and r/Rainmeter with a waitlist link (or use Steam wishlists), and set a threshold in advance, such as 300+ signups in 2 weeks.

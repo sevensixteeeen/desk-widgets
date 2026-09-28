@@ -8,10 +8,11 @@ Desktop widgets for Windows 11: a clock, now playing, weather, and Google Calend
 
 - **Now playing:** shows whatever is playing in Spotify, YouTube in Chrome, or any app that reports media to Windows, with play/pause/skip. No Spotify login needed.
 - **Weather:** current conditions and the next 6 hours, from [Open-Meteo](https://open-meteo.com) (no API key).
-- **Calendar:** month view plus upcoming events from every calendar ticked in your Google Calendar. Click a day or **+** to add an event.
+- **Calendar:** month view (browse with ‹ › or the mouse wheel) plus upcoming events from every calendar ticked in your Google Calendar. Click a day or **+** to add an event to whichever calendar you choose.
 - **Themed from your wallpaper:** colours are pulled from your current wallpaper and update when you change it.
 - **Stays on the desktop:** behind your apps, and still visible after Win+D.
-- **Tray menu:** Lock widgets (stops accidental dragging), Open at login, Quit.
+- **Tray menu:** Show widgets (hide the ones you don't want), Lock widgets (stops accidental dragging), Open at login, Quit.
+- **Ctrl+Alt+L** locks/unlocks the widgets from anywhere.
 
 ## Project map
 
@@ -29,7 +30,7 @@ src-tauri/
   src/media.rs         Now playing (Windows media session API)
   src/gcal.rs          Google sign-in, reading and adding events
   src/wallpaper.rs     Reads the current wallpaper
-  src/settings.rs      Saved settings (lock)
+  src/settings.rs      Saved settings (lock, hidden widgets)
 ```
 
 ## Build it yourself

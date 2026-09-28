@@ -6,7 +6,8 @@
 
 use base64::{engine::general_purpose::STANDARD, Engine};
 use serde::Serialize;
-use std::{fs, path::PathBuf, time::UNIX_EPOCH};
+use image::ImageFormat;
+use std::{fs, io::Cursor, path::PathBuf, time::UNIX_EPOCH};
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -37,7 +38,16 @@ pub fn read(known_stamp: Option<String>) -> Result<Option<Wallpaper>, String> {
     }
 
     let bytes = fs::read(&path).map_err(|e| e.to_string())?;
-    // Check the file's first bytes ("magic number") to tell PNG from JPEG.
-    let mime = if bytes.starts_with(&[0x89, b'P', b'N', b'G']) { "image/png" } else { "image/jpeg" };
-    Ok(Some(Wallpaper { stamp, data_url: format!("data:{mime};base64,{}", STANDARD.encode(bytes)) }))
+
+    // The theme only needs the wallpaper's colours, not its detail. Shrink it here in Rust
+    // so each widget receives a tiny image (~20 KB) instead of the full one (several MB).
+    let full = image::load_from_memory(&bytes).map_err(|e| e.to_string())?;
+    let small = full.thumbnail(160, 90); // fits inside 160x90, keeps the shape
+
+    let mut png = Vec::new();
+    small
+        .write_to(&mut Cursor::new(&mut png), ImageFormat::Png)
+        .map_err(|e| e.to_string())?;
+
+    Ok(Some(Wallpaper { stamp, data_url: format!("data:image/png;base64,{}", STANDARD.encode(png)) }))
 }
