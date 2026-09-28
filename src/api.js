@@ -49,6 +49,10 @@ function sample(command) {
     ],
     gcal_connect: null,
     gcal_create_event: null,
+    gcal_calendars: [
+      { id: "me@example.com", name: "Personal", color: "#9fe1e7", primary: true },
+      { id: "work", name: "Work", color: "#fa573c", primary: false },
+    ],
     get_settings: { locked: false },
     wallpaper: null,
     gcal_disconnect: null,

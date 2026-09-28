@@ -2,7 +2,11 @@ import { invoke } from "../api.js";
 import { config } from "../config.js";
 
 const REFRESH_MS = 10 * 60 * 1000;
+const UPCOMING_DAYS = 45; // how far ahead the "upcoming" list looks
+const LAST_CALENDAR_KEY = "calendar.lastCalendar"; // remembers the calendar you last added to
 const plusIcon = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M7 2h2v5h5v2H9v5H7V9H2V7h5z"/></svg>';
+const prevIcon = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.3 2.3 11.7 3.7 7.4 8l4.3 4.3-1.4 1.4L4.6 8z"/></svg>';
+const nextIcon = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.7 2.3 4.3 3.7 8.6 8l-4.3 4.3 1.4 1.4L11.4 8z"/></svg>';
 
 // "2026-09-25" for a Date, in local time (toISOString would use UTC and can shift the day)
 const dayKey = (d) =>
@@ -20,9 +24,12 @@ export function mountCalendar(root) {
   root.innerHTML = `
     <div class="cal">
       <div class="cal-head">
-        <h1 class="cal-month"></h1>
+        <span class="cal-year"></span>
+        <button class="cal-today" title="Back to this month" hidden>Today</button>
+        <h1 class="cal-month" aria-live="polite"></h1>
         <div class="cal-head-side">
-          <span class="cal-year"></span>
+          <button class="cal-nav" data-step="-1" aria-label="Previous month" title="Previous month">${prevIcon}</button>
+          <button class="cal-nav" data-step="1" aria-label="Next month" title="Next month">${nextIcon}</button>
           <button class="cal-add" aria-label="Add event" title="Add event" hidden>${plusIcon}</button>
         </div>
       </div>
@@ -33,21 +40,42 @@ export function mountCalendar(root) {
   const grid = root.querySelector(".cal-grid");
   const bottom = root.querySelector(".cal-bottom");
   const addButton = root.querySelector(".cal-add");
+  const todayButton = root.querySelector(".cal-today");
 
-  let events = [];
+  let upcoming = [];           // events from today onwards, for the list under the grid
+  let calendars = [];          // calendars you can add events to, for the form's picker
+  const monthCache = new Map(); // "2026-10" -> events shown as dots in that month's grid
   let connected = false;
   let formDate = null; // a date key while the add-event form is open, else null
   let renderedDay = "";
 
+  // The month being shown. Starts on the current month; the arrows move it.
+  const now0 = new Date();
+  let view = { year: now0.getFullYear(), month: now0.getMonth() };
+
+  const monthKey = (year, month) => `${year}-${String(month + 1).padStart(2, "0")}`;
+  const isCurrentMonth = () => {
+    const t = new Date();
+    return view.year === t.getFullYear() && view.month === t.getMonth();
+  };
+
+  // First and last day the 6-week grid shows for a month (it includes bits of the months around it).
+  function gridRange(year, month) {
+    const offset = (new Date(year, month, 1).getDay() - config.weekStartsOn + 7) % 7;
+    return { start: new Date(year, month, 1 - offset), end: new Date(year, month, 1 - offset + 42) };
+  }
+
   // ---------- Month grid ----------
 
   function renderMonth() {
-    const today = new Date();
-    renderedDay = dayKey(today);
-    const year = today.getFullYear(), month = today.getMonth();
+    renderedDay = dayKey(new Date());
+    const { year, month } = view;
+    const firstOfMonth = new Date(year, month, 1);
 
-    root.querySelector(".cal-month").textContent = today.toLocaleDateString(undefined, { month: "long" });
+    root.querySelector(".cal-month").textContent = firstOfMonth.toLocaleDateString(undefined, { month: "long" });
     root.querySelector(".cal-year").textContent = year;
+    todayButton.hidden = isCurrentMonth();
+    const events = monthCache.get(monthKey(year, month)) ?? [];
 
     // Weekday initials, rotated so the week starts on config.weekStartsOn
     const dow = [...Array(7)].map((_, i) => {
@@ -55,8 +83,7 @@ export function mountCalendar(root) {
       return `<div class="cal-dow">${d.toLocaleDateString(undefined, { weekday: "narrow" })}</div>`;
     });
 
-    const first = new Date(year, month, 1);
-    const offset = (first.getDay() - config.weekStartsOn + 7) % 7;
+    const offset = (firstOfMonth.getDay() - config.weekStartsOn + 7) % 7;
     const eventDays = new Set(events.map((e) => dayKey(parseStart(e))));
 
     // Each day is a real <button>: click it to add an event on that date.
@@ -81,7 +108,57 @@ export function mountCalendar(root) {
     const day = e.target.closest(".cal-day");
     if (day && connected) openForm(day.dataset.date);
   });
-  addButton.addEventListener("click", () => openForm(dayKey(new Date())));
+  addButton.addEventListener("click", () => {
+    // Today if you're looking at this month, otherwise the 1st of the month on screen.
+    openForm(isCurrentMonth() ? dayKey(new Date()) : dayKey(new Date(view.year, view.month, 1)));
+  });
+
+  // ---------- Month navigation ----------
+
+  let fetchTimer = null;
+
+  function goToMonth(year, month, direction = 0) {
+    const d = new Date(year, month, 1); // normalises month -1 / 12 into the right year
+    view = { year: d.getFullYear(), month: d.getMonth() };
+    renderMonth();
+
+    // A short slide in the direction you moved, so it's clear the month changed.
+    if (direction) {
+      grid.classList.remove("slide-next", "slide-prev");
+      void grid.offsetWidth; // restart the animation if you click quickly
+      grid.classList.add(direction > 0 ? "slide-next" : "slide-prev");
+    }
+
+    // Load this month's events unless we already have them. Waiting briefly means
+    // clicking › five times fetches one month, not five.
+    clearTimeout(fetchTimer);
+    if (connected && !monthCache.has(monthKey(view.year, view.month))) {
+      fetchTimer = setTimeout(() => loadMonth(view.year, view.month), 250);
+    }
+  }
+
+  root.querySelectorAll(".cal-nav").forEach((btn) =>
+    btn.addEventListener("click", () => {
+      const step = Number(btn.dataset.step);
+      goToMonth(view.year, view.month + step, step);
+    }),
+  );
+  todayButton.addEventListener("click", () => {
+    const t = new Date();
+    const step = Math.sign(t.getFullYear() * 12 + t.getMonth() - (view.year * 12 + view.month));
+    goToMonth(t.getFullYear(), t.getMonth(), step);
+  });
+
+  // Mouse wheel over the grid also flips months (one step per wheel "notch").
+  let wheelLock = false;
+  grid.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    if (wheelLock || Math.abs(e.deltaY) < 10) return;
+    wheelLock = true;
+    setTimeout(() => (wheelLock = false), 300); // touchpads send many small events
+    const step = e.deltaY > 0 ? 1 : -1;
+    goToMonth(view.year, view.month + step, step);
+  }, { passive: false });
 
   // ---------- Bottom area: upcoming list, add form, or a message ----------
 
@@ -91,20 +168,20 @@ export function mountCalendar(root) {
     const tomorrowKey = dayKey(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1));
     const timeFmt = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit", hour12: config.hour12 });
 
-    const upcoming = events
+    const list = upcoming
       .map((e) => ({ ...e, date: parseStart(e) }))
       .filter((e) => (e.allDay ? dayKey(e.date) >= todayKey : e.date >= now))
       .sort((a, b) => a.date - b.date) // events come from several calendars, so sort here
       .slice(0, config.upcomingEvents);
 
-    if (!upcoming.length) {
+    if (!list.length) {
       bottom.className = "cal-foot";
       bottom.innerHTML = `<p class="note">Nothing coming up. Click a day to add an event.</p>`;
       return;
     }
 
     bottom.className = "cal-events";
-    bottom.innerHTML = upcoming.map((e) => {
+    bottom.innerHTML = list.map((e) => {
       const key = dayKey(e.date);
       const day = key === todayKey ? "Today"
         : key === tomorrowKey ? "Tmrw"
@@ -119,8 +196,8 @@ export function mountCalendar(root) {
 
     // Titles go in via textContent so an event called "<b>hi</b>" can't inject HTML.
     bottom.querySelectorAll(".cal-what > span").forEach((el, i) => {
-      el.textContent = upcoming[i].title;
-      el.parentElement.title = `${upcoming[i].title} (${upcoming[i].calendar})`;
+      el.textContent = list[i].title;
+      el.parentElement.title = `${list[i].title} (${list[i].calendar})`;
     });
   }
 
@@ -131,12 +208,17 @@ export function mountCalendar(root) {
     bottom.innerHTML = `
       <form class="cal-form">
         <input name="title" placeholder="Event title" aria-label="Event title" required autocomplete="off" />
+        <div class="cal-form-row cal-pick" ${calendars.length > 1 ? "" : "hidden"}>
+          <i class="cal-dot"></i>
+          <select name="calendar" aria-label="Calendar"></select>
+        </div>
         <div class="cal-form-row">
           <input type="date" name="date" aria-label="Date" required />
           <input type="time" name="time" aria-label="Time, leave empty for all day" />
         </div>
         <div class="cal-form-row">
           <select name="duration" aria-label="Duration">
+            <option value="">All day</option>
             <option value="30">30 min</option>
             <option value="60" selected>1 hour</option>
             <option value="120">2 hours</option>
@@ -144,7 +226,7 @@ export function mountCalendar(root) {
           <button type="button" class="btn-quiet" data-cancel>Cancel</button>
           <button type="submit" class="btn">Add</button>
         </div>
-        <p class="note cal-form-msg">No time = all-day event.</p>
+        <p class="note cal-form-msg" aria-live="polite"></p>
       </form>`;
 
     const form = bottom.querySelector("form");
@@ -152,10 +234,44 @@ export function mountCalendar(root) {
     form.date.value = key;
     form.title.focus();
 
+    // Calendar picker. Names and colours come from Google, so they're set with
+    // new Option(text, value) and style (never inserted as HTML).
+    for (const cal of calendars) form.calendar.add(new Option(cal.name, cal.id));
+    const last = localStorage.getItem(LAST_CALENDAR_KEY);
+    const initial = calendars.find((c) => c.id === last) ?? calendars.find((c) => c.primary) ?? calendars[0];
+    if (initial) form.calendar.value = initial.id;
+    const dot = form.querySelector(".cal-pick .cal-dot");
+    const paintDot = () => {
+      const cal = calendars.find((c) => c.id === form.calendar.value);
+      dot.style.background = safeColor(cal?.color);
+    };
+    paintDot();
+    form.calendar.addEventListener("change", paintDot);
+
     // Clicking another day while the form is open just changes the date.
-    form.date.addEventListener("change", () => { formDate = form.date.value; renderMonth(); });
-    form.time.addEventListener("input", () => (form.duration.disabled = !form.time.value));
-    form.duration.disabled = true; // starts all-day until a time is typed
+    // Changing the date in the form moves the grid to that month if needed.
+    form.date.addEventListener("change", () => {
+      if (!form.date.value) return;
+      formDate = form.date.value;
+      const d = fromKey(formDate);
+      if (d.getFullYear() !== view.year || d.getMonth() !== view.month) {
+        const step = Math.sign(d.getFullYear() * 12 + d.getMonth() - (view.year * 12 + view.month));
+        goToMonth(d.getFullYear(), d.getMonth(), step);
+      } else {
+        renderMonth();
+      }
+    });
+    // No time = all-day event. The duration box says "All day" until you type a time.
+    const allDayOption = form.duration.options[0];
+    function syncDuration() {
+      const timed = Boolean(form.time.value);
+      form.duration.disabled = !timed;
+      allDayOption.hidden = timed;
+      if (!timed) form.duration.value = "";
+      else if (!form.duration.value) form.duration.value = "60";
+    }
+    form.time.addEventListener("input", syncDuration);
+    syncDuration();
     form.querySelector("[data-cancel]").addEventListener("click", closeForm);
     form.addEventListener("keydown", (e) => e.key === "Escape" && closeForm());
 
@@ -178,13 +294,17 @@ export function mountCalendar(root) {
         end = new Date(s.getTime() + Number(form.duration.value) * 60_000).toISOString();
       }
 
+      // No picker (only one writable calendar, or the list hasn't loaded): use your main calendar.
+      const calendarId = form.calendar.value || "primary";
+
       msg.textContent = "Adding…";
       try {
-        await invoke("gcal_create_event", { title, start, end, allDay });
+        await invoke("gcal_create_event", { title, start, end, allDay, calendarId });
+        if (form.calendar.value) localStorage.setItem(LAST_CALENDAR_KEY, calendarId);
         closeForm();
-        loadEvents();
+        loadEvents(); // refreshes the list and the month on screen
       } catch (err) {
-        msg.textContent = String(err);
+        msg.textContent = msg.title = String(err); // title = full text on hover if it's cut off
       }
     });
   }
@@ -236,13 +356,23 @@ export function mountCalendar(root) {
       return renderFoot("See your events here.", "Connect Google Calendar");
     }
 
-    // From the start of this month's grid to ~2 weeks past month end.
-    const now = new Date();
-    const from = new Date(now.getFullYear(), now.getMonth(), 1 - 7);
-    const to = new Date(now.getFullYear(), now.getMonth() + 1, 14);
     try {
-      events = await invoke("gcal_events", { timeMin: from.toISOString(), timeMax: to.toISOString() });
+      // One request covers both this month's grid and the upcoming list.
+      const today = new Date();
+      const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      const ahead = new Date(today.getFullYear(), today.getMonth(), today.getDate() + UPCOMING_DAYS);
+      const range = gridRange(today.getFullYear(), today.getMonth());
+      const end = ahead > range.end ? ahead : range.end;
+      const events = await fetchEvents(range.start, end);
+      // The picker list; if it fails, keep the last one (adding still works via "primary").
+      calendars = await invoke("gcal_calendars").catch(() => calendars);
+
       setConnected(true);
+      monthCache.clear(); // everything is re-fetched on refresh, so nothing goes stale
+      monthCache.set(monthKey(today.getFullYear(), today.getMonth()), events);
+      upcoming = events.filter((e) => parseStart(e) >= startOfToday);
+
+      if (!isCurrentMonth()) await loadMonth(view.year, view.month);
       renderMonth();
       if (!formDate) renderUpcoming(); // don't wipe a half-typed event
     } catch (err) {
@@ -251,14 +381,34 @@ export function mountCalendar(root) {
     }
   }
 
+  function fetchEvents(from, to) {
+    return invoke("gcal_events", { timeMin: from.toISOString(), timeMax: to.toISOString() });
+  }
+
+  // Events for a month you've navigated to (only the dots in the grid use these).
+  async function loadMonth(year, month) {
+    const { start, end } = gridRange(year, month);
+    try {
+      monthCache.set(monthKey(year, month), await fetchEvents(start, end));
+    } catch {
+      return; // keep the grid without dots; the next refresh tries again
+    }
+    // Only redraw if you're still looking at that month.
+    if (view.year === year && view.month === month) renderMonth();
+  }
+
   renderMonth();
   loadEvents();
   setInterval(loadEvents, REFRESH_MS);
-  // Redraw at midnight (checked every minute) so "today" moves on.
+  // At midnight (checked every minute), move "today" on. If you were looking at
+  // the current month and a new month starts, follow it.
   setInterval(() => {
-    if (dayKey(new Date()) !== renderedDay) {
-      renderMonth();
-      if (connected && !formDate) renderUpcoming();
+    const t = new Date();
+    if (dayKey(t) === renderedDay) return;
+    const was = fromKey(renderedDay);
+    if (view.year === was.getFullYear() && view.month === was.getMonth()) {
+      view = { year: t.getFullYear(), month: t.getMonth() };
     }
+    if (connected) loadEvents(); else renderMonth();
   }, 60 * 1000);
 }

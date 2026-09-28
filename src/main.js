@@ -10,7 +10,7 @@ const widgets = {
   clock: { mount: mountClock, size: [380, 190] },
   nowplaying: { mount: mountNowPlaying, size: [380, 150] },
   weather: { mount: mountWeather, size: [380, 220] },
-  calendar: { mount: mountCalendar, size: [320, 470] },
+  calendar: { mount: mountCalendar, size: [320, 490] },
 };
 const widget = widgets[widgetName];
 
@@ -31,13 +31,25 @@ widget.mount(root);
 
 // ---- Drag + lock ----
 let locked = false;
-function setLocked(value) {
+function setLocked(value, announce = false) {
   locked = value;
   document.body.classList.toggle("is-locked", value); // CSS swaps the cursor
+  if (announce) showToast(value ? "Locked" : "Unlocked");
 }
 if (inTauri) {
-  invoke("get_settings").then((s) => setLocked(s.locked));
-  onEvent("lock-changed", setLocked); // sent by the tray's "Lock widgets" item
+  invoke("get_settings").then((s) => setLocked(s.locked)); // at startup: no toast
+  onEvent("lock-changed", (value) => setLocked(value, true)); // tray item or Ctrl+Alt+L
+}
+
+// A short "Locked" / "Unlocked" label in the middle of the widget. It lives on <body>,
+// outside the card, so a widget redrawing its card can't wipe it away.
+function showToast(text) {
+  document.querySelector(".toast")?.remove(); // pressing again quickly replaces it
+  const toast = document.createElement("div");
+  toast.className = "toast";
+  toast.textContent = text;
+  document.body.append(toast);
+  toast.addEventListener("animationend", () => toast.remove());
 }
 
 root.addEventListener("mousedown", (e) => {

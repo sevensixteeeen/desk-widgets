@@ -8,6 +8,8 @@ use tauri::{AppHandle, Manager};
 pub struct Settings {
     #[serde(default)] // missing in an older file -> false instead of an error
     pub locked: bool,
+    #[serde(default)] // missing -> empty list, i.e. every widget shown
+    pub hidden: Vec<String>, // labels of widgets you've hidden, e.g. ["weather"]
 }
 
 fn path(app: &AppHandle) -> Option<std::path::PathBuf> {

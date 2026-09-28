@@ -4,11 +4,12 @@ mod settings;
 mod wallpaper;
 
 use tauri::{
-    menu::{CheckMenuItem, Menu, MenuItem},
+    menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu},
     tray::TrayIconBuilder,
-    AppHandle, Emitter, Manager,
+    AppHandle, Emitter, Manager, Wry,
 };
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use tauri_plugin_window_state::{AppHandleExt, StateFlags};
 
 // ---------- Commands: functions the JS side can call with invoke("name") ----------
@@ -55,8 +56,14 @@ async fn gcal_create_event(
     start: String,
     end: String,
     all_day: bool,
+    calendar_id: String,
 ) -> Result<(), String> {
-    gcal::create_event(app, title, start, end, all_day).await
+    gcal::create_event(app, title, start, end, all_day, calendar_id).await
+}
+
+#[tauri::command]
+async fn gcal_calendars(app: AppHandle) -> Result<Vec<gcal::CalendarChoice>, String> {
+    gcal::calendars(app).await
 }
 
 #[tauri::command]
@@ -94,11 +101,56 @@ fn pin_to_desktop(window: &tauri::WebviewWindow) {
     }
 }
 
+// ---------- Show / hide widgets ----------
+
+/// Every widget window: (label in tauri.conf.json, name shown in the tray menu).
+const WIDGETS: [(&str, &str); 4] = [
+    ("clock", "Clock"),
+    ("nowplaying", "Now playing"),
+    ("weather", "Weather"),
+    ("calendar", "Calendar"),
+];
+
+/// Shows the widget if it's hidden, hides it if it's shown, and remembers the choice.
+fn toggle_widget(app: &AppHandle, label: &str, item: &CheckMenuItem<Wry>) {
+    let Some(window) = app.get_webview_window(label) else { return };
+    let mut s = settings::load(app);
+
+    let was_hidden = s.hidden.iter().any(|h| h == label);
+    if was_hidden {
+        s.hidden.retain(|h| h != label); // keep every entry except this one
+        let _ = window.show();
+    } else {
+        s.hidden.push(label.to_string());
+        let _ = window.hide();
+    }
+
+    let _ = settings::save(app, &s);
+    let _ = item.set_checked(was_hidden); // it was hidden -> now shown -> ticked
+}
+
+// ---------- Lock ----------
+
+/// Keyboard shortcut that locks/unlocks the widgets from anywhere.
+/// Written as modifier+modifier+key; change it here if another app already uses it.
+const LOCK_SHORTCUT: &str = "ctrl+alt+L";
+
+/// Flips the lock, saves it, updates the tray tick, and tells every widget.
+/// Used by both the tray menu and the keyboard shortcut.
+fn toggle_lock(app: &AppHandle, item: &CheckMenuItem<Wry>) {
+    let mut s = settings::load(app);
+    s.locked = !s.locked;
+    let _ = settings::save(app, &s);
+    let _ = item.set_checked(s.locked);
+    let _ = app.emit("lock-changed", s.locked); // JS listens for this
+}
+
 // ---------- App ----------
 
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         // Registers/unregisters the app in Windows' startup list (HKCU\...\Run).
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
         // Only remember position; sizes come from config.js.
@@ -109,13 +161,48 @@ pub fn run() {
         )
         .setup(|app| {
             // Widgets have no taskbar button, so the tray icon is the control panel.
-            let locked = settings::load(app.handle()).locked;
-            let lock = CheckMenuItem::with_id(app, "lock", "Lock widgets", true, locked, None::<&str>)?;
+            let saved = settings::load(app.handle());
+
+            // "Show widgets" submenu: one tickbox per widget.
+            let widgets_menu = Submenu::new(app, "Show widgets", true)?;
+            let mut widget_items = Vec::new(); // (label, menu item), used by the click handler
+            for (label, name) in WIDGETS {
+                let shown = !saved.hidden.iter().any(|h| h == label);
+                let item = CheckMenuItem::with_id(app, format!("show:{label}"), name, true, shown, None::<&str>)?;
+                widgets_menu.append(&item)?;
+                widget_items.push((label, item));
+            }
+
+            // The last argument shows the shortcut next to the menu text.
+            let lock = CheckMenuItem::with_id(app, "lock", "Lock widgets", true, saved.locked, Some("Ctrl+Alt+L"))?;
+
+            // Global shortcut: works even while another app is focused.
+            let lock_for_shortcut = lock.clone();
+            let registered = app.global_shortcut().on_shortcut(LOCK_SHORTCUT, move |app, _shortcut, event| {
+                // Fires on key down and key up; only act once, on the press.
+                if event.state() == ShortcutState::Pressed {
+                    toggle_lock(app, &lock_for_shortcut);
+                }
+            });
+            if let Err(e) = registered {
+                // Usually means another app already owns this shortcut. The tray item still works.
+                eprintln!("Couldn't register {LOCK_SHORTCUT}: {e}");
+            }
             let starts_at_login = app.autolaunch().is_enabled().unwrap_or(false);
             let autostart =
                 CheckMenuItem::with_id(app, "autostart", "Open at login", true, starts_at_login, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit widgets", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&lock, &autostart, &quit])?;
+            let menu = Menu::with_items(
+                app,
+                &[
+                    &widgets_menu,
+                    &PredefinedMenuItem::separator(app)?,
+                    &lock,
+                    &autostart,
+                    &PredefinedMenuItem::separator(app)?,
+                    &quit,
+                ],
+            )?;
 
             // The closure below needs its own handles to update the checkmarks.
             let lock_item = lock.clone();
@@ -124,34 +211,43 @@ pub fn run() {
                 .icon(app.default_window_icon().cloned().expect("app icon missing"))
                 .tooltip("Desk widgets")
                 .menu(&menu)
-                .on_menu_event(move |app, event| match event.id.as_ref() {
-                    "lock" => {
-                        // Flip the saved value (don't trust the checkmark's own toggle timing),
-                        // then make the checkmark and every widget agree with it.
-                        let mut s = settings::load(app);
-                        s.locked = !s.locked;
-                        let _ = settings::save(app, &s);
-                        let _ = lock_item.set_checked(s.locked);
-                        let _ = app.emit("lock-changed", s.locked); // JS listens for this
+                .on_menu_event(move |app, event| {
+                    let id = event.id.as_ref();
+
+                    // Widget tickboxes have ids like "show:clock".
+                    if let Some(label) = id.strip_prefix("show:") {
+                        if let Some((_, item)) = widget_items.iter().find(|(l, _)| *l == label) {
+                            toggle_widget(app, label, item);
+                        }
+                        return;
                     }
-                    "autostart" => {
-                        let launcher = app.autolaunch();
-                        let enable = !launcher.is_enabled().unwrap_or(false);
-                        let _ = if enable { launcher.enable() } else { launcher.disable() };
-                        // Show what Windows actually has, in case enabling failed.
-                        let _ = autostart_item.set_checked(launcher.is_enabled().unwrap_or(false));
+
+                    match id {
+                        "lock" => toggle_lock(app, &lock_item),
+                        "autostart" => {
+                            let launcher = app.autolaunch();
+                            let enable = !launcher.is_enabled().unwrap_or(false);
+                            let _ = if enable { launcher.enable() } else { launcher.disable() };
+                            // Show what Windows actually has, in case enabling failed.
+                            let _ = autostart_item.set_checked(launcher.is_enabled().unwrap_or(false));
+                        }
+                        "quit" => {
+                            let _ = app.save_window_state(StateFlags::POSITION);
+                            app.exit(0);
+                        }
+                        _ => {}
                     }
-                    "quit" => {
-                        let _ = app.save_window_state(StateFlags::POSITION);
-                        app.exit(0);
-                    }
-                    _ => {}
                 })
                 .build(app)?;
 
-            #[cfg(windows)]
             for window in app.webview_windows().values() {
+                #[cfg(windows)]
                 pin_to_desktop(window);
+
+                // Windows start hidden (tauri.conf.json), so hidden widgets never flash on screen.
+                if !saved.hidden.iter().any(|h| h == window.label()) {
+                    let _ = window.show();
+                }
             }
 
             Ok(())
@@ -164,6 +260,7 @@ pub fn run() {
             gcal_connect,
             gcal_events,
             gcal_create_event,
+            gcal_calendars,
             gcal_disconnect,
             get_settings,
             wallpaper

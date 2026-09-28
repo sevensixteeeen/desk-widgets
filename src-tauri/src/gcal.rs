@@ -292,6 +292,9 @@ struct CalendarEntry {
     selected: bool, // ticked in the Google Calendar sidebar
     #[serde(default)]
     hidden: bool,
+    access_role: Option<String>, // "owner" | "writer" | "reader" | "freeBusyReader"
+    #[serde(default)]
+    primary: bool, // your main calendar
 }
 
 #[derive(Deserialize)]
@@ -323,15 +326,11 @@ pub struct Event {
     color: String,
 }
 
-/// Events from every calendar ticked in your Google Calendar sidebar.
-/// `time_min` / `time_max` are ISO timestamps from JS.
-pub async fn events(app: AppHandle, time_min: String, time_max: String) -> Result<Vec<Event>, String> {
-    let client = reqwest::Client::new();
-    let token = access_token(&app, &client).await?;
-
-    let calendars: CalendarList = client
+/// Every calendar in your Google Calendar sidebar (ticked or not).
+async fn calendar_list(client: &reqwest::Client, token: &str) -> Result<CalendarList, String> {
+    client
         .get(format!("{API}/users/me/calendarList"))
-        .bearer_auth(&token)
+        .bearer_auth(token)
         .send()
         .await
         .map_err(err)?
@@ -339,7 +338,51 @@ pub async fn events(app: AppHandle, time_min: String, time_max: String) -> Resul
         .map_err(err)?
         .json()
         .await
-        .map_err(err)?;
+        .map_err(err)
+}
+
+/// A calendar you can add events to, for the picker in the add-event form.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CalendarChoice {
+    id: String,
+    name: String,
+    color: String,
+    primary: bool,
+}
+
+/// Calendars you're allowed to add events to (you own them, or have "make changes" access),
+/// that are ticked in your sidebar. Your main calendar comes first.
+pub async fn calendars(app: AppHandle) -> Result<Vec<CalendarChoice>, String> {
+    let client = reqwest::Client::new();
+    let token = access_token(&app, &client).await?;
+    let list = calendar_list(&client, &token).await?;
+
+    let mut choices: Vec<CalendarChoice> = list
+        .items
+        .into_iter()
+        .filter(|c| c.selected && !c.hidden)
+        .filter(|c| matches!(c.access_role.as_deref(), Some("owner") | Some("writer")))
+        .map(|c| CalendarChoice {
+            name: c.summary_override.or(c.summary).unwrap_or_default(),
+            color: c.background_color.unwrap_or_else(|| "#888888".into()),
+            primary: c.primary,
+            id: c.id,
+        })
+        .collect();
+
+    // true sorts after false, so negate: primary first, then alphabetical.
+    choices.sort_by(|a, b| (!a.primary, a.name.to_lowercase()).cmp(&(!b.primary, b.name.to_lowercase())));
+    Ok(choices)
+}
+
+/// Events from every calendar ticked in your Google Calendar sidebar.
+/// `time_min` / `time_max` are ISO timestamps from JS.
+pub async fn events(app: AppHandle, time_min: String, time_max: String) -> Result<Vec<Event>, String> {
+    let client = reqwest::Client::new();
+    let token = access_token(&app, &client).await?;
+
+    let calendars = calendar_list(&client, &token).await?;
 
     let mut all = Vec::new();
     for cal in calendars.items.into_iter().filter(|c| c.selected && !c.hidden) {
@@ -381,7 +424,7 @@ pub async fn events(app: AppHandle, time_min: String, time_max: String) -> Resul
 
 // ---------- Adding events ----------
 
-/// Adds an event to your main calendar.
+/// Adds an event to the calendar with id `calendar_id` ("primary" = your main calendar).
 /// Timed: `start`/`end` are ISO timestamps. All-day: dates like "2026-09-25",
 /// with `end` the day *after* (Google treats the end date as exclusive).
 pub async fn create_event(
@@ -390,6 +433,7 @@ pub async fn create_event(
     start: String,
     end: String,
     all_day: bool,
+    calendar_id: String,
 ) -> Result<(), String> {
     let client = reqwest::Client::new();
     let token = access_token(&app, &client).await?;
@@ -402,8 +446,14 @@ pub async fn create_event(
     };
     let body = json!({ "summary": title, "start": start, "end": end });
 
+    // Same safe path-building as in events(): IDs can contain '@' and '#'.
+    let mut url = Url::parse(API).map_err(err)?;
+    url.path_segments_mut()
+        .map_err(|_| "Bad calendar URL")?
+        .extend(["calendars", calendar_id.as_str(), "events"]);
+
     let res = client
-        .post(format!("{API}/calendars/primary/events"))
+        .post(url)
         .bearer_auth(token)
         .json(&body)
         .send()
@@ -411,7 +461,7 @@ pub async fn create_event(
         .map_err(err)?;
 
     if res.status().as_u16() == 403 {
-        return Err("Google hasn't allowed adding events yet. Click Reconnect.".into());
+        return Err("No permission for that calendar. Try another.".into());
     }
     res.error_for_status().map_err(err)?;
     Ok(())
