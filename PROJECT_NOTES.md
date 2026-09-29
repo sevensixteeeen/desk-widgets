@@ -182,8 +182,8 @@ Two ways in, one function: the tray's **Lock widgets** item and the global short
 
 ### Wallpaper theme (`wallpaper.rs`, `theme.js`)
 
-1. Rust reads Windows' copy of the current wallpaper at `%APPDATA%\Microsoft\Windows\Themes\TranscodedWallpaper` and returns it only if its modified time changed (cheap to poll).
-2. JS shrinks it to 160×90 px on a canvas.
+1. Rust reads Windows' copy of the current wallpaper at `%APPDATA%\Microsoft\Windows\Themes\TranscodedWallpaper`, only if its modified time changed (cheap to poll).
+2. Rust shrinks it to fit 160×90 px with the `image` crate (`thumbnail()` averages pixels) and sends a small PNG, about 35 KB instead of about 650 KB for a 1080p wallpaper. JS draws it onto a 160×90 canvas.
 3. **Average brightness** decides dark or light cards.
 4. **Average colour** tints the cards.
 5. Vivid pixels are grouped into 36 hue buckets. The strongest becomes **ink A**, and the strongest hue at least 50° away becomes **ink B**.
@@ -312,7 +312,14 @@ cargo fmt              # (inside src-tauri) format Rust code
 3. Run it. On **"Windows protected your PC"** (the app isn't code-signed), click **More info → Run anyway**.
 4. Tray → tick **Open at login**.
 
-**Updating:** change the code → build → run the new installer (it replaces the old one). Bump `version` in `tauri.conf.json` and `Cargo.toml` for clarity.
+**Updating:** change the code → build → run the new installer (it replaces the old one).
+
+**Publishing a release:**
+
+1. Bump `version` in **three** places: `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`.
+2. `npm run tauri build`, then commit and push.
+3. On GitHub: **Releases → Draft a new release**. Create a tag like `v0.2.0`, write what changed, and attach `src-tauri\target\release\bundle\nsis\Desk Widgets_<version>_x64-setup.exe`.
+4. The README's Download link always points to the newest release (`/releases/latest`), so it never needs editing.
 
 Don't run `npm run tauri dev` while the installed app is open, or you'll get two sets of widgets.
 
@@ -341,7 +348,7 @@ git grep --cached -n -e "GOCSPX" -e "apps.googleusercontent.com" -e "gmail.com"
 
 ## 14. Sharing with other Windows users
 
-**Send the installer** (`Desk Widgets_0.1.0_x64-setup.exe`, about 3 MB) by Drive, WhatsApp, USB, or zipped by email. Better: attach it to a **GitHub Release** on the repo and share the link, so every version lives in one place.
+**Share the download link:** `https://github.com/sevensixteeeen/desk-widgets/releases/latest`. It always points to the newest installer. You can also send the `.exe` directly (about 3 MB).
 
 **What the other person does:**
 
@@ -389,7 +396,7 @@ Each person's calendar data goes directly between their PC and Google; nobody el
 - The upcoming list looks 45 days ahead; events further out only show as dots when you navigate to that month.
 - Changing the lock shortcut means editing `lib.rs` and rebuilding (there's no settings window).
 - Hidden widgets keep running in the background (their windows are hidden, not closed).
-- The wallpaper is re-read as a full image when it changes, which causes a brief memory spike.
+- When the wallpaper changes, each of the 4 widgets asks Rust separately, so Rust decodes it 4 times (about 16 ms each). Caching the result in Rust would make it once.
 - The installer is **unsigned**, so SmartScreen shows a warning on install.
 
 ---
@@ -404,7 +411,7 @@ Options if you want it lower:
 
 | Option | Effect |
 |---|---|
-| Resize the wallpaper in Rust before sending it to JS | Removes the spike when the wallpaper changes; worth doing |
+| ~~Resize the wallpaper in Rust before sending it to JS~~ | Done (2026-09-28): 19× less data per widget |
 | Poll now-playing every 3 s instead of 1.5 s | Less CPU |
 | Merge all widgets into one window | ~30–40% less RAM, but much more complex |
 
@@ -429,11 +436,12 @@ Options if you want it lower:
 |---|---|
 | 2026-09-25 | First version: 4 widgets, wallpaper theme, lock, Win+D fix, Google Calendar read + add, installer, autostart |
 | 2026-09-27 | Calendar month navigation (‹ ›, mouse wheel, Today) |
-| 2026-09-28 | Show/hide widgets from the tray, calendar picker for new events, lock shortcut (Ctrl+Alt+L) with toast |
+| 2026-09-28 | Show/hide widgets from the tray, calendar picker for new events, lock shortcut (Ctrl+Alt+L) with toast; wallpaper shrunk in Rust before sending |
+| 2026-09-29 | v0.2.0: first public release on GitHub Releases; README leads with Download |
 
 ## 20. Ideas for later
 
-- **Next:** resize the wallpaper in Rust before sending it to JS (removes the memory spike). Planned as a hands-on lesson with the `image` crate.
+- Build releases automatically with GitHub Actions (`tauri-action`): push a version tag, and GitHub's Windows machines build the installer and attach it to the Release.
 - Poll now-playing less often if CPU use matters.
 - Use it for a few days and note what's missing, before adding new widgets.
 
