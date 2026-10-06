@@ -121,6 +121,7 @@ export function mountCalendar(root) {
     const d = new Date(year, month, 1); // normalises month -1 / 12 into the right year
     view = { year: d.getFullYear(), month: d.getMonth() };
     renderMonth();
+    if (connected && !formDate) renderList(); // don't wipe a half-typed event
 
     // A short slide in the direction you moved, so it's clear the month changed.
     if (direction) {
@@ -162,23 +163,53 @@ export function mountCalendar(root) {
 
   // ---------- Bottom area: upcoming list, add form, or a message ----------
 
+  // The list under the grid follows the month on screen:
+  //  - this month: upcoming events from now on
+  //  - any other month: that month's events, from the 1st
+  function renderList() {
+    if (isCurrentMonth()) return renderUpcoming();
+
+    const events = monthCache.get(monthKey(view.year, view.month));
+    const monthName = new Date(view.year, view.month, 1).toLocaleDateString(undefined, { month: "long" });
+    if (!events) {
+      // Not fetched yet; loadMonth() redraws the list when it arrives.
+      return renderNote(connected ? `Loading ${monthName}…` : "");
+    }
+
+    // The fetch covers the whole 6-week grid, so keep only days inside this month.
+    const inMonth = events
+      .map((e) => ({ ...e, date: parseStart(e) }))
+      .filter((e) => e.date.getFullYear() === view.year && e.date.getMonth() === view.month)
+      .sort((a, b) => a.date - b.date);
+
+    if (!inMonth.length) return renderNote(`No events in ${monthName}. Click a day to add one.`);
+    renderRows(inMonth.slice(0, config.upcomingEvents), inMonth.length - config.upcomingEvents);
+  }
+
   function renderUpcoming() {
+    const now = new Date();
+    const todayKey = dayKey(now);
+    const list = upcoming
+      .map((e) => ({ ...e, date: parseStart(e) }))
+      .filter((e) => (e.allDay ? dayKey(e.date) >= todayKey : e.date >= now))
+      .sort((a, b) => a.date - b.date); // events come from several calendars, so sort here
+
+    if (!list.length) return renderNote("Nothing coming up. Click a day to add an event.");
+    renderRows(list.slice(0, config.upcomingEvents), 0);
+  }
+
+  function renderNote(text) {
+    bottom.className = "cal-foot";
+    bottom.innerHTML = `<p class="note"></p>`;
+    bottom.querySelector("p").textContent = text;
+  }
+
+  // One row per event: "Tue 14 09:30 • Title". `more` = how many didn't fit.
+  function renderRows(list, more) {
     const now = new Date();
     const todayKey = dayKey(now);
     const tomorrowKey = dayKey(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1));
     const timeFmt = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit", hour12: config.hour12 });
-
-    const list = upcoming
-      .map((e) => ({ ...e, date: parseStart(e) }))
-      .filter((e) => (e.allDay ? dayKey(e.date) >= todayKey : e.date >= now))
-      .sort((a, b) => a.date - b.date) // events come from several calendars, so sort here
-      .slice(0, config.upcomingEvents);
-
-    if (!list.length) {
-      bottom.className = "cal-foot";
-      bottom.innerHTML = `<p class="note">Nothing coming up. Click a day to add an event.</p>`;
-      return;
-    }
 
     bottom.className = "cal-events";
     bottom.innerHTML = list.map((e) => {
@@ -192,7 +223,7 @@ export function mountCalendar(root) {
           <span class="cal-when">${when}</span>
           <span class="cal-what"><i class="cal-dot" style="background:${safeColor(e.color)}"></i><span></span></span>
         </div>`;
-    }).join("");
+    }).join("") + (more > 0 ? `<p class="cal-more">+${more} more this month</p>` : "");
 
     // Titles go in via textContent so an event called "<b>hi</b>" can't inject HTML.
     bottom.querySelectorAll(".cal-what > span").forEach((el, i) => {
@@ -312,7 +343,7 @@ export function mountCalendar(root) {
   function closeForm() {
     formDate = null;
     renderMonth();
-    renderUpcoming();
+    renderList();
   }
 
   // A message with an optional button (not connected, errors...)
@@ -374,7 +405,7 @@ export function mountCalendar(root) {
 
       if (!isCurrentMonth()) await loadMonth(view.year, view.month);
       renderMonth();
-      if (!formDate) renderUpcoming(); // don't wipe a half-typed event
+      if (!formDate) renderList(); // don't wipe a half-typed event
     } catch (err) {
       setConnected(false);
       renderFoot(String(err), "Connect Google Calendar");
@@ -391,10 +422,17 @@ export function mountCalendar(root) {
     try {
       monthCache.set(monthKey(year, month), await fetchEvents(start, end));
     } catch {
-      return; // keep the grid without dots; the next refresh tries again
+      // Keep the grid without dots; the next refresh (or visiting the month again) retries.
+      if (view.year === year && view.month === month && !formDate) {
+        renderNote("Couldn't load this month's events. Check your connection.");
+      }
+      return;
     }
     // Only redraw if you're still looking at that month.
-    if (view.year === year && view.month === month) renderMonth();
+    if (view.year === year && view.month === month) {
+      renderMonth();
+      if (!formDate) renderList();
+    }
   }
 
   renderMonth();

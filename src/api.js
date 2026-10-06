@@ -46,6 +46,7 @@ function sample(command) {
       { title: "Gym", start: at(1, 7), allDay: false, calendar: "Personal", color: "#9fe1e7" },
       { title: "Gandhi Jayanti", start: dayKey(at(7, 0)), allDay: true, calendar: "Holidays in India", color: "#16a765" },
       { title: "Supplier call", start: at(6, 11), allDay: false, calendar: "Work", color: "#fa573c" },
+      { title: "Flight to Dubai", start: at(32, 9, 40), allDay: false, calendar: "Personal", color: "#9fe1e7" },
     ],
     gcal_connect: null,
     gcal_create_event: null,
