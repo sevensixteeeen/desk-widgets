@@ -23,7 +23,6 @@ export function mountClock(root) {
     if (hm === last) return; // only touch the DOM when the minute changes
     last = hm;
     time.textContent = hm;
-    time.dataset.text = hm; // the pink "second print" reads this attribute
     period.textContent = parts.find((p) => p.type === "dayPeriod")?.value ?? "";
     date.textContent = dateFmt.format(now);
   }

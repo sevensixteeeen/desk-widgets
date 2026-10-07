@@ -76,7 +76,7 @@ export function mountWeather(root) {
     root.innerHTML = `
       <div class="wx">
         <div class="wx-top">
-          <span class="print" data-text="${temp}">${temp}</span>
+          <span class="print">${temp}</span>
           <div class="wx-side">
             <p class="wx-cond">${CONDITIONS[d.current.weather_code] ?? "—"}</p>
             <button class="wx-city" title="Change city">${city.name}</button>

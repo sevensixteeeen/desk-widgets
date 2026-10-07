@@ -5,4 +5,5 @@ export const config = {
   weekStartsOn: 1,        // 0 = Sunday, 1 = Monday
   temperatureUnit: "celsius", // or "fahrenheit"
   upcomingEvents: 3,      // how many events the calendar lists
+  nowPlayingStyle: "turntable", // or "card" for the original compact design
 };

@@ -1,13 +1,12 @@
-/* ---------- Two-ink print design system ----------
-   Colours come from your wallpaper (theme.js). The big numbers are "printed"
-   twice, once in each ink, slightly off-register. That offset is the one bold
-   move; everything else stays quiet. */
+/* ---------- Minimal design system ----------
+   One typeface (Jost). Big numbers are set thin and large in a single colour;
+   the wallpaper's two inks (theme.js) appear only as small accents: today,
+   buttons, dots, bars. */
 
 @font-face {
-  font-family: "Archivo";
-  src: url("fonts/archivo.woff2") format("woff2-variations");
-  font-weight: 100 900;
-  font-stretch: 62% 125%; /* width axis: condensed <-> expanded */
+  font-family: "Jost";
+  src: url("fonts/jost.woff2") format("woff2-variations");
+  font-weight: 100 900; /* variable font: any weight in this range */
   font-display: block;
 }
 
@@ -39,7 +38,7 @@ html, body {
 }
 
 body {
-  font-family: "Archivo", "Segoe UI Variable", "Segoe UI", sans-serif;
+  font-family: "Jost", "Segoe UI Variable", "Segoe UI", sans-serif;
   color: var(--ink);
   -webkit-font-smoothing: antialiased;
 }
@@ -82,28 +81,16 @@ body {
   pointer-events: none;
 }
 
-/* The off-register print: text in ink A + a copy in ink B nudged right and down. */
+/* Big numbers (time, temperature): thin, large, one colour. Tabular digits keep
+   every number the same width, so the clock doesn't shift as it ticks. */
 .print {
-  position: relative;
   display: inline-block;
-  color: var(--accent-a);
-  font-weight: 800;
-  font-stretch: 125%;
+  color: var(--ink);
+  font-weight: 200;
   font-variant-numeric: tabular-nums;
   line-height: 0.9;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.01em;
 }
-.print::after {
-  content: attr(data-text);
-  position: absolute;
-  inset: 0;
-  color: var(--accent-b);
-  transform: translate(0.04em, 0.028em);
-  mix-blend-mode: var(--blend); /* how overlapping inks mix */
-  pointer-events: none;
-}
-/* On dark cards, blended inks wash out; tuck ink B behind ink A instead. */
-[data-theme="dark"] .print::after { z-index: -1; mix-blend-mode: normal; }
 
 .muted { color: var(--muted); }
 
@@ -134,7 +121,7 @@ button:focus-visible, input:focus-visible {
 
 /* ---------- Clock ---------- */
 .clock { display: flex; flex-direction: column; justify-content: center; height: 100%; gap: 14px; }
-.clock .print { font-size: 88px; }
+.clock .print { font-size: 104px; }
 .clock .period { font-size: 18px; font-weight: 600; margin-left: 10px; color: var(--ink); }
 .clock-date { font-size: 17px; font-weight: 500; }
 
@@ -154,7 +141,7 @@ button:focus-visible, input:focus-visible {
 .np-art::after { content: ""; position: absolute; inset: 0; background: var(--accent-a); mix-blend-mode: lighten; }
 .np-art:hover img { filter: none; mix-blend-mode: normal; } /* hover reveals the real cover */
 .np-art:hover::after { opacity: 0; }
-.np-art .glyph { position: absolute; inset: 0; display: grid; place-items: center; z-index: 1; color: var(--paper-solid); font-weight: 800; font-stretch: 125%; font-size: 40px; }
+.np-art .glyph { position: absolute; inset: 0; display: grid; place-items: center; z-index: 1; color: var(--paper-solid); font-weight: 300; font-size: 40px; }
 
 .np-body { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .np-title, .np-artist { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -175,10 +162,88 @@ button:focus-visible, input:focus-visible {
 
 .np.is-empty .np-bar, .np.is-empty .np-row { visibility: hidden; }
 
+/* ---------- Now playing: turntable ---------- */
+/* Content area is 332 x 190 (380 x 230 card minus padding); positions below match
+   the tonearm geometry in nowplaying.js (record centre 92,95 · arm pivot 192,22). */
+.tt { position: relative; height: 100%; }
+
+.tt-platter {
+  position: absolute; left: 6px; top: 9px; width: 172px; height: 172px; border-radius: 50%;
+  background: color-mix(in srgb, var(--ink) 10%, var(--paper-solid));
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent-a) 55%, transparent), 0 6px 18px rgb(0 0 0 / 0.28);
+}
+/* Light reflecting off the vinyl. It sits above the record and doesn't spin, like real glare. */
+.tt-platter::after {
+  content: ""; position: absolute; inset: 4px; border-radius: 50%; pointer-events: none;
+  background: conic-gradient(from 30deg, transparent 0deg, rgb(255 255 255 / 0.10) 30deg, transparent 60deg,
+                             transparent 180deg, rgb(255 255 255 / 0.07) 210deg, transparent 240deg);
+}
+
+.tt-record {
+  position: absolute; inset: 4px; border-radius: 50%;
+  /* Grooves: thin alternating rings of two near-blacks. */
+  background: repeating-radial-gradient(circle, #121216 0 1.4px, #1c1c22 1.4px 2.8px);
+  animation: tt-spin 1.8s linear infinite paused; /* 33⅓ rpm = one turn every 1.8 s */
+}
+.tt.is-playing .tt-record { animation-play-state: running; }
+@keyframes tt-spin { to { transform: rotate(360deg); } }
+
+/* The album art is the record's centre label, in the same duotone as the card design. */
+.tt-label {
+  position: absolute; left: 50%; top: 50%; width: 56px; height: 56px; margin: -28px 0 0 -28px;
+  border-radius: 50%; overflow: hidden; background: var(--accent-b);
+}
+.tt-label img { width: 100%; height: 100%; object-fit: cover; filter: grayscale(1) contrast(1.15); mix-blend-mode: multiply; }
+.tt-label::after { content: ""; position: absolute; inset: 0; background: var(--accent-a); mix-blend-mode: lighten; }
+.tt-label:hover img { filter: none; mix-blend-mode: normal; } /* hover shows the real cover */
+.tt-label:hover::after { opacity: 0; }
+.tt-label .glyph { position: absolute; inset: 0; display: grid; place-items: center; z-index: 1; color: var(--paper-solid); font-weight: 300; font-size: 22px; }
+.tt-spindle {
+  position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; z-index: 2;
+  border-radius: 50%; background: var(--paper-solid); box-shadow: 0 0 0 1px rgb(0 0 0 / 0.4);
+}
+
+/* Tonearm: an SVG over the whole widget. It swings around the pivot; the slow ease makes
+   it lower onto the record and lift off like a real arm. */
+.tt-arm { position: absolute; left: 0; top: 0; width: 332px; height: 190px; overflow: visible; pointer-events: none; }
+.tt-arm-swing {
+  transform-box: view-box;
+  transition: transform 0.9s cubic-bezier(0.3, 0.7, 0.3, 1);
+  filter: drop-shadow(0 3px 2px rgb(0 0 0 / 0.35));
+}
+.tt-tube { stroke: var(--ink); stroke-width: 3.5; stroke-linecap: round; }
+.tt-weight { fill: color-mix(in srgb, var(--ink) 55%, var(--paper-solid)); }
+.tt-head { fill: var(--accent-a); }
+.tt-base { fill: var(--paper-solid); stroke: color-mix(in srgb, var(--ink) 25%, transparent); stroke-width: 2; }
+.tt-hub { fill: var(--accent-b); }
+
+.tt-side {
+  position: absolute; left: 218px; right: 0; top: 0; bottom: 0;
+  display: flex; flex-direction: column; gap: 3px; min-width: 0; padding-top: 4px;
+}
+.tt-title, .tt-artist { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tt-title { font-size: 16px; font-weight: 700; }
+.tt-artist { font-size: 13px; color: var(--muted); }
+.tt.is-empty .tt-title, .tt.is-empty .tt-artist { white-space: normal; } /* let the empty-state text wrap */
+.tt-time { margin-top: auto; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.tt-controls { display: flex; align-items: center; gap: 4px; margin-top: 6px; }
+.tt-controls button { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; color: var(--accent-a); }
+.tt-controls button:hover { background: var(--rule); }
+.tt-controls [data-action="toggle"] { background: var(--accent-a); color: var(--paper-solid); }
+.tt-controls [data-action="toggle"]:hover { filter: brightness(1.12); }
+.tt-controls svg { width: 16px; height: 16px; fill: currentColor; }
+.tt.is-empty .tt-time, .tt.is-empty .tt-controls { visibility: hidden; }
+
+@media (prefers-reduced-motion: reduce) {
+  .tt-record { animation: none; }
+  .tt-arm-swing { transition: none; }
+}
+
 /* ---------- Weather ---------- */
 .wx { display: flex; flex-direction: column; justify-content: space-between; height: 100%; }
 .wx-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
-.wx .print { font-size: 80px; }
+.wx .print { font-size: 90px; }
 .wx-side { text-align: right; padding-top: 4px; display: flex; flex-direction: column; gap: 3px; align-items: flex-end; }
 .wx-cond { font-size: 18px; font-weight: 650; }
 .wx-city { font-size: 14px; color: var(--muted); padding: 0; }
@@ -206,7 +271,7 @@ button:focus-visible, input:focus-visible {
   column-gap: 8px; row-gap: 2px; margin-bottom: 10px;
 }
 .cal-year { grid-area: 1 / 1; font-size: 13px; font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums; }
-.cal-month { grid-area: 2 / 1; font-size: 42px; font-weight: 800; font-stretch: 62%; line-height: 1; color: var(--ink); letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; }
+.cal-month { grid-area: 2 / 1; font-size: 38px; font-weight: 300; line-height: 1; color: var(--ink); letter-spacing: -0.02em; white-space: nowrap; overflow: hidden; }
 .cal-head-side { grid-area: 2 / 2; display: flex; align-items: center; gap: 2px; }
 .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); row-gap: 2px; text-align: center; }
 .cal-dow { font-size: 12px; color: var(--muted); padding-bottom: 6px; }

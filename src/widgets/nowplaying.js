@@ -1,4 +1,5 @@
 import { invoke } from "../api.js";
+import { config } from "../config.js";
 
 const icons = {
   prev: '<svg viewBox="0 0 16 16"><path d="M3 2h2v12H3zM14 2v12L6 8z"/></svg>',
@@ -7,38 +8,31 @@ const icons = {
   next: '<svg viewBox="0 0 16 16"><path d="M11 2h2v12h-2zM2 2v12l8-6z"/></svg>',
 };
 
+const EMPTY_HINT = "Play something in Spotify and it shows up here.";
+
 const fmt = (ms) => {
   const s = Math.max(0, Math.floor(ms / 1000));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 };
 
+const controlsHtml = `
+  <button data-action="prev" aria-label="Previous track">${icons.prev}</button>
+  <button data-action="toggle" aria-label="Play or pause">${icons.play}</button>
+  <button data-action="next" aria-label="Next track">${icons.next}</button>`;
+
+/**
+ * The widget is split in two:
+ *  - the data side (below, in mountNowPlaying): asks Windows what's playing, fetches
+ *    cover art, works out the position between polls, sends play/pause/skip
+ *  - a "view": draws it. There are two, picked by config.nowPlayingStyle:
+ *    "turntable" (default) or "card" (the original design).
+ * Every view has the same four methods, so the data side doesn't care which one it's driving.
+ */
 export function mountNowPlaying(root) {
-  root.innerHTML = `
-    <div class="np is-empty">
-      <div class="np-art"><img alt="" hidden><span class="glyph">♪</span></div>
-      <div class="np-body">
-        <p class="np-title">Nothing playing</p>
-        <p class="np-artist">Play something in Spotify and it shows up here.</p>
-        <div class="np-bar"><span></span></div>
-        <div class="np-row">
-          <span class="np-time"></span>
-          <div class="np-controls">
-            <button data-action="prev" aria-label="Previous track">${icons.prev}</button>
-            <button data-action="toggle" aria-label="Play or pause">${icons.play}</button>
-            <button data-action="next" aria-label="Next track">${icons.next}</button>
-          </div>
-        </div>
-      </div>
-    </div>`;
+  const view = config.nowPlayingStyle === "card" ? cardView(root) : turntableView(root);
 
-  const $ = (s) => root.querySelector(s);
-  const el = {
-    np: $(".np"), img: $(".np-art img"), glyph: $(".glyph"), title: $(".np-title"),
-    artist: $(".np-artist"), bar: $(".np-bar span"), time: $(".np-time"), toggle: $('[data-action="toggle"]'),
-  };
-
-  let track = null;     // last answer from Rust
-  let receivedAt = 0;   // when we got it, to keep the bar moving between polls
+  let track = null;   // last answer from Rust
+  let receivedAt = 0; // when we got it, to keep things moving between polls
   let trackKey = "";
 
   async function poll() {
@@ -52,40 +46,25 @@ export function mountNowPlaying(root) {
     const key = track ? `${track.title}|${track.artist}` : "";
     if (key !== trackKey) {
       trackKey = key;
-      renderTrack();
+      view.setTrack(track);
       loadArt(); // cover art is only fetched when the song changes
     }
   }
 
-  function renderTrack() {
-    el.np.classList.toggle("is-empty", !track);
-    el.title.textContent = track?.title || "Nothing playing";
-    el.artist.textContent = track
-      ? track.artist || track.album || ""
-      : "Play something in Spotify and it shows up here.";
-  }
-
   async function loadArt() {
     const src = track ? await invoke("media_thumbnail").catch(() => null) : null;
-    el.img.hidden = !src;
-    el.glyph.hidden = Boolean(src);
-    if (src) el.img.src = src;
+    view.setArt(src);
   }
 
   // Smooth progress: runs 4x/second, polls Windows only every 1.5 s.
-  function renderProgress() {
-    if (!track) return;
+  function tick() {
+    if (!track) return view.setProgress(0, 0, false);
     const elapsed = track.playing ? performance.now() - receivedAt : 0;
     const pos = Math.min(track.positionMs + elapsed, track.durationMs || Infinity);
-    el.bar.style.width = track.durationMs ? `${(pos / track.durationMs) * 100}%` : "0";
-    el.time.textContent = track.durationMs ? `${fmt(pos)} / ${fmt(track.durationMs)}` : "";
-    if (el.toggle.dataset.playing !== String(track.playing)) {
-      el.toggle.dataset.playing = track.playing; // only swap the icon when state changes
-      el.toggle.innerHTML = track.playing ? icons.pause : icons.play;
-    }
+    view.setProgress(pos, track.durationMs, track.playing);
   }
 
-  root.querySelector(".np-controls").addEventListener("click", async (e) => {
+  view.controls.addEventListener("click", async (e) => {
     const action = e.target.closest("button")?.dataset.action;
     if (!action) return;
     await invoke("media_control", { action }).catch(() => {});
@@ -94,5 +73,139 @@ export function mountNowPlaying(root) {
 
   poll();
   setInterval(poll, 1500);
-  setInterval(renderProgress, 250);
+  setInterval(tick, 250);
+}
+
+// Swaps the play/pause icon only when the state actually changes.
+function syncToggle(button, playing) {
+  if (button.dataset.playing === String(playing)) return;
+  button.dataset.playing = playing;
+  button.innerHTML = playing ? icons.pause : icons.play;
+  button.setAttribute("aria-label", playing ? "Pause" : "Play");
+}
+
+// ---------- View 1: turntable ----------
+
+// Tonearm geometry, in the SVG's own units (the card's content area is 332 x 190).
+// Worked out once: where the needle sits for each arm angle (0° = arm pointing straight down).
+const ARM = {
+  pivot: { x: 192, y: 22 },
+  length: 118,
+  rest: 0,   // off the record, parked beside it
+  start: 18, // needle on the outer groove: start of the song
+  end: 35,   // needle near the label: end of the song
+};
+
+function turntableView(root) {
+  const { pivot: p, length: L } = ARM;
+  root.innerHTML = `
+    <div class="tt is-empty">
+      <div class="tt-platter">
+        <div class="tt-record">
+          <div class="tt-label"><img alt="" hidden><span class="glyph">♪</span></div>
+          <i class="tt-spindle"></i>
+        </div>
+      </div>
+
+      <svg class="tt-arm" viewBox="0 0 332 190" aria-hidden="true">
+        <g class="tt-arm-swing">
+          <rect class="tt-weight" x="${p.x - 7}" y="${p.y - 27}" width="14" height="15" rx="3" />
+          <line class="tt-tube" x1="${p.x}" y1="${p.y - 12}" x2="${p.x}" y2="${p.y + L - 14}" />
+          <rect class="tt-head" x="${p.x - 5}" y="${p.y + L - 16}" width="10" height="17" rx="2" />
+        </g>
+        <circle class="tt-base" cx="${p.x}" cy="${p.y}" r="13" />
+        <circle class="tt-hub" cx="${p.x}" cy="${p.y}" r="4.5" />
+      </svg>
+
+      <div class="tt-side">
+        <p class="tt-title">Nothing playing</p>
+        <p class="tt-artist">${EMPTY_HINT}</p>
+        <p class="tt-time"></p>
+        <div class="tt-controls">${controlsHtml}</div>
+      </div>
+    </div>`;
+
+  const $ = (s) => root.querySelector(s);
+  const el = {
+    tt: $(".tt"), img: $(".tt-label img"), glyph: $(".tt-label .glyph"), title: $(".tt-title"),
+    artist: $(".tt-artist"), time: $(".tt-time"), arm: $(".tt-arm-swing"), toggle: $('[data-action="toggle"]'),
+  };
+  el.arm.style.transformOrigin = `${p.x}px ${p.y}px`; // swing around the pivot
+
+  return {
+    controls: $(".tt-controls"),
+
+    setTrack(track) {
+      el.tt.classList.toggle("is-empty", !track);
+      el.title.textContent = track?.title || "Nothing playing";
+      el.artist.textContent = track ? track.artist || track.album || "" : EMPTY_HINT;
+      el.title.title = el.title.textContent; // full text on hover when it's cut off
+    },
+
+    setArt(src) {
+      el.img.hidden = !src;
+      el.glyph.hidden = Boolean(src);
+      if (src) el.img.src = src;
+    },
+
+    setProgress(pos, duration, playing) {
+      // The record spins only while playing (CSS pauses the animation otherwise).
+      el.tt.classList.toggle("is-playing", playing);
+
+      // The arm: parked when paused, on the record while playing, and it creeps
+      // inward as the song goes on, so it doubles as the progress bar.
+      const progress = duration ? Math.min(pos / duration, 1) : 0;
+      const angle = playing ? ARM.start + (ARM.end - ARM.start) * progress : ARM.rest;
+      el.arm.style.transform = `rotate(${angle.toFixed(2)}deg)`;
+
+      el.time.textContent = duration ? `${fmt(pos)} / ${fmt(duration)}` : "";
+      syncToggle(el.toggle, playing);
+    },
+  };
+}
+
+// ---------- View 2: card (the original design) ----------
+
+function cardView(root) {
+  root.innerHTML = `
+    <div class="np is-empty">
+      <div class="np-art"><img alt="" hidden><span class="glyph">♪</span></div>
+      <div class="np-body">
+        <p class="np-title">Nothing playing</p>
+        <p class="np-artist">${EMPTY_HINT}</p>
+        <div class="np-bar"><span></span></div>
+        <div class="np-row">
+          <span class="np-time"></span>
+          <div class="np-controls">${controlsHtml}</div>
+        </div>
+      </div>
+    </div>`;
+
+  const $ = (s) => root.querySelector(s);
+  const el = {
+    np: $(".np"), img: $(".np-art img"), glyph: $(".np-art .glyph"), title: $(".np-title"),
+    artist: $(".np-artist"), bar: $(".np-bar span"), time: $(".np-time"), toggle: $('[data-action="toggle"]'),
+  };
+
+  return {
+    controls: $(".np-controls"),
+
+    setTrack(track) {
+      el.np.classList.toggle("is-empty", !track);
+      el.title.textContent = track?.title || "Nothing playing";
+      el.artist.textContent = track ? track.artist || track.album || "" : EMPTY_HINT;
+    },
+
+    setArt(src) {
+      el.img.hidden = !src;
+      el.glyph.hidden = Boolean(src);
+      if (src) el.img.src = src;
+    },
+
+    setProgress(pos, duration, playing) {
+      el.bar.style.width = duration ? `${(pos / duration) * 100}%` : "0";
+      el.time.textContent = duration ? `${fmt(pos)} / ${fmt(duration)}` : "";
+      syncToggle(el.toggle, playing);
+    },
+  };
 }

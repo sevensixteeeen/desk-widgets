@@ -8,7 +8,7 @@ import { mountCalendar } from "./widgets/calendar.js";
 
 const widgets = {
   clock: { mount: mountClock, size: [380, 190] },
-  nowplaying: { mount: mountNowPlaying, size: [380, 150] },
+  nowplaying: { mount: mountNowPlaying, size: config.nowPlayingStyle === "card" ? [380, 150] : [380, 230] },
   weather: { mount: mountWeather, size: [380, 220] },
   calendar: { mount: mountCalendar, size: [320, 490] },
 };
