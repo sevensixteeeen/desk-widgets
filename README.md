@@ -20,9 +20,9 @@ Desktop widgets for Windows: a clock, now playing, weather, and Google Calendar,
 
 ## Features
 
-- **Now playing:** shows whatever is playing in Spotify, YouTube in Chrome, or any app that reports media to Windows, with play/pause/skip. No Spotify login needed.
+- **Now playing:** a turntable for whatever is playing in Spotify, YouTube in Chrome, or any app that reports media to Windows. The record spins while music plays, the album art is its centre label, and the tonearm moves inward as the song goes on. Play/pause/skip, and click or drag the arc around the record to jump anywhere in the song (in apps that let Windows control playback position). No Spotify login needed.
 - **Weather:** current conditions and the next 6 hours, from [Open-Meteo](https://open-meteo.com) (no API key).
-- **Calendar:** month view (browse with ‹ › or the mouse wheel) plus upcoming events from every calendar ticked in your Google Calendar. Click a day or **+** to add an event to whichever calendar you choose.
+- **Calendar:** month view (browse with ‹ › or the mouse wheel) with events from every calendar ticked in your Google Calendar. The list under it follows the month on screen: upcoming events for this month, that month's events when you browse to another. Click a day or **+** to add an event to whichever calendar you choose.
 - **Themed from your wallpaper:** colours are pulled from your current wallpaper and update when you change it.
 - **Stays on the desktop:** behind your apps, and still visible after Win+D.
 - **Tray menu:** Show widgets (hide the ones you don't want), Lock widgets (stops accidental dragging), Open at login, Quit.
@@ -33,6 +33,7 @@ Desktop widgets for Windows: a clock, now playing, weather, and Google Calendar,
 - **Move a widget:** drag it. Positions are remembered.
 - **Lock them in place:** tray → **Lock widgets**, or **Ctrl+Alt+L** from anywhere.
 - **Hide a widget:** tray → **Show widgets** → untick it.
+- **Jump to a point in the song:** click or drag the arc around the record.
 - **Change the weather city:** click the city name.
 - **Quit:** tray → **Quit widgets**.
 
@@ -59,7 +60,7 @@ Everything stays on your PC. The Google client file and sign-in token live in `%
 
 ```
 src/                   Frontend (plain HTML/CSS/JS, no bundler)
-  config.js            Your settings: size, 12/24h, week start, °C/°F
+  config.js            Your settings: size, 12/24h, week start, °C/°F, now-playing style
   main.js              Picks the widget for each window; size, drag and lock
   theme.js             Turns the wallpaper into a colour palette
   api.js               Talks to Rust, or returns sample data in a normal browser

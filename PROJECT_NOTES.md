@@ -11,7 +11,7 @@ Everything important about how this project works, why it's built this way, and 
 | Widget | What it shows | Data source |
 |---|---|---|
 | **Clock** | Time and date | System clock |
-| **Now playing** | Current song, album art, progress, play/pause/skip | Windows media session API |
+| **Now playing** | Turntable: current song, album art on the record, tonearm + progress arc, play/pause/skip, seek | Windows media session API |
 | **Weather** | Temperature, conditions, high/low, next 6 hours | Open-Meteo (free, no API key) |
 | **Calendar** | Month view with navigation, upcoming events, add events to any of your calendars | Google Calendar API |
 
@@ -24,8 +24,9 @@ Everything important about how this project works, why it's built this way, and 
 
 - Widgets sit **behind all apps** on the desktop and **survive Win+D** (Show desktop).
 - **Colours come from your wallpaper** and update automatically when the wallpaper changes.
-- **Now playing** works with Spotify, YouTube in Chrome, or any app that reports media to Windows, with no login.
-- **Calendar** shows events from every calendar ticked in the Google Calendar sidebar (holidays, shared, work). Each event has a dot in its calendar's colour.
+- **Now playing** works with Spotify, YouTube in Chrome, or any app that reports media to Windows, with no login. It's drawn as a turntable: the record spins while playing, and the tonearm creeps inward as the song goes on.
+- **Seek:** click or drag the arc around the record to jump anywhere in the song (only in apps that let Windows move their playback position).
+- **Calendar** shows events from every calendar ticked in the Google Calendar sidebar (holidays, shared, work). Each event has a dot in its calendar's colour. The list under the grid follows the month on screen.
 - **Browse months** with ‹ ›, or the mouse wheel over the dates; **Today** jumps back.
 - **Add events** from the desktop: click a day or **+**, pick which calendar, and leave the time empty for an all-day event.
 - **Tray menu:** Show widgets (tick/untick each one), Lock widgets, Open at login, Quit.
@@ -44,7 +45,7 @@ Everything important about how this project works, why it's built this way, and 
 | **Plain HTML/CSS/JS, no bundler** | Nothing to compile on the frontend; `withGlobalTauri` exposes `window.__TAURI__`. |
 | **WebView2** | Built into Windows 11, so nothing extra to install. |
 | **Open-Meteo** | Free, no API key, supports browser requests directly. |
-| **Archivo (variable font)** | Width axis from 62% to 125%. Expanded for the big numbers, condensed for the month name. Bundled locally, so it works offline. |
+| **Jost (variable font)** | One geometric typeface, any weight from 100 to 900. Thin for the big numbers, bold for titles. Bundled locally (SIL Open Font License), so it works offline. |
 
 Options considered and rejected: **Electron** (too heavy for always-on widgets) and **Python + PySide6** (glass/blur styling is harder and it's less polished).
 
@@ -56,7 +57,7 @@ Options considered and rejected: **Electron** (too heavy for always-on widgets) 
 ┌──────────────────────── Tauri app (one process) ────────────────────────┐
 │                                                                          │
 │  Rust core (src-tauri/src)                                               │
-│   ├─ media.rs      → Windows media session (now playing, controls, art)  │
+│   ├─ media.rs      → Windows media session (now playing, controls, seek) │
 │   ├─ gcal.rs       → Google sign-in, list calendars, read/add events     │
 │   ├─ wallpaper.rs  → reads the current wallpaper file                    │
 │   ├─ settings.rs   → saved settings (lock, hidden widgets)               │
@@ -86,10 +87,10 @@ desk-widgets/
 │  ├─ index.html                Shared page for every widget window
 │  ├─ main.js                   Widget selection, size (zoom), drag, lock
 │  ├─ api.js                    invoke / events / window helpers + sample data for browser preview
-│  ├─ config.js                 User settings (scale, 12/24h, week start, units)
+│  ├─ config.js                 User settings (scale, 12/24h, week start, units, now-playing style)
 │  ├─ theme.js                  Wallpaper → colour palette
 │  ├─ styles.css                Design system and all widget styles
-│  ├─ fonts/archivo.woff2       Bundled variable font (+ licence)
+│  ├─ fonts/jost.woff2          Bundled variable font (+ licence)
 │  └─ widgets/
 │     ├─ clock.js
 │     ├─ nowplaying.js
@@ -135,7 +136,7 @@ Two ways in, one function: the tray's **Lock widgets** item and the global short
 - **Global shortcut:** `tauri-plugin-global-shortcut`, registered in Rust at startup with `on_shortcut(LOCK_SHORTCUT, ...)`. The handler acts only on `ShortcutState::Pressed` (Windows reports press and release). The library registers with Windows' no-repeat flag, so holding the keys doesn't flicker the lock.
 - **If the shortcut is taken** by another app, registering fails; the error is logged and the app carries on (the tray item still works).
 - **Feedback:** on `lock-changed`, each widget shows a "Locked"/"Unlocked" toast for 1.2 s. The toast sits on `<body>`, outside the card, so a widget redrawing its card can't remove it. No toast at startup.
-- **Cursor:** ✥ move when unlocked, a normal arrow when locked. Dragging is started from JS with `startDragging()` on `mousedown`, skipping buttons and inputs.
+- **Cursor:** ✥ move when unlocked, a normal arrow when locked. Dragging is started from JS with `startDragging()` on `mousedown`, skipping buttons, inputs, links and anything marked `data-no-drag` (the seek arc).
 
 ### Show / hide widgets (`lib.rs → toggle_widget`, `settings.rs`)
 
@@ -148,9 +149,16 @@ Two ways in, one function: the tray's **Lock widgets** item and the global short
 
 - Uses the **Global System Media Transport Controls** (the same API as the Windows volume-key media flyout).
 - WinRT calls block, so the commands run inside `spawn_blocking` to keep the main thread free.
-- Apps report playback position only occasionally, so Rust adds the time elapsed since `LastUpdatedTime`, and JS interpolates between polls. Result: a smooth progress bar.
-- JS polls every 1.5 s and fetches album art only when the track changes.
-- The album art is shown as a duotone in the two theme inks; hover to see the original.
+- Apps report playback position only occasionally, so Rust adds the time elapsed since `LastUpdatedTime`, and JS interpolates between polls (4× a second). Result: smooth progress.
+- JS polls every 1.5 s and fetches album art only when the track changes. The art is shown as-is.
+- **Two views,** picked by `nowPlayingStyle` in `config.js`. The data side (polling, controls, seeking) is shared; each view only draws.
+  - `"turntable"` (default, 380×230 before scaling): the album art is the record's centre label. The record spins (CSS, 33⅓ rpm) only while playing. The tonearm is parked when paused, lowers onto the record when playing, and creeps from the outer groove (18°) towards the label (35°) as the song goes on. A progress arc runs around the top of the record, with a dot at the current position. The arm angles and arc are worked out in the SVG's own 332×190 units (`ARM` and `RING` in `nowplaying.js`), and the CSS positions match them.
+  - `"card"` (the original compact design, 380×150): square album art, a progress bar, and the controls.
+- **Seeking:** Windows reports per app whether outside controls may move the position; Rust passes that on as `canSeek`, and the arc (or bar) only reacts when it's true.
+  - Turntable: click or drag the arc. Pointer capture keeps the drag going if the mouse slips off the thin arc, and a wide invisible stroke on top of it is what you actually grab. The seek is sent only when you let go, not on every pixel.
+  - Card: click anywhere on the bar.
+  - JS jumps the widget straight away, calls `media_seek`, then re-polls after 400 ms to see where the player really ended up.
+  - Rust calls `TryChangePlaybackPositionAsync`, measured from the timeline's `StartTime` (it isn't always 0). It returns `false` if the app refuses.
 
 ### Weather (`weather.js`)
 
@@ -163,7 +171,7 @@ Two ways in, one function: the tray's **Lock widgets** item and the global short
 - **Sign-in:** the OAuth "loopback" flow for desktop apps with **PKCE**. Rust starts a temporary local server on `127.0.0.1:<random port>`, opens Google sign-in in the browser, catches the returned `code`, and exchanges it for a **refresh token**. PKCE plus a random `state` value stop an intercepted code from being used by anyone else.
 - **Reading:** lists all calendars (`calendarList`, via the shared `calendar_list()` helper), keeps the ones that are `selected` (ticked in Google Calendar) and not hidden, then fetches events from each one. A calendar that fails is skipped rather than breaking the whole widget. JS sorts the merged list.
 - **Month navigation:** JS keeps the month on screen (`view`) separate from today.
-  - The **upcoming list** always starts from today, whatever month you're viewing.
+  - The **list under the grid follows the month on screen**. On the current month it shows upcoming events from now on (looking 45 days ahead, so it can include early next month). On any other month it shows that month's events from the 1st, with a "+N more this month" line when they don't all fit. It shows `upcomingEvents` rows (`config.js`).
   - Each refresh makes one request covering the current month's grid plus the next 45 days, for both the grid dots and the upcoming list.
   - **Other months** are fetched only when you open them, then cached (`monthCache`). A short 250 ms wait means clicking › five times quickly fetches one month, not five.
   - Everything is re-fetched every 10 minutes and after adding an event, so the cache never goes stale.
@@ -198,24 +206,24 @@ Two ways in, one function: the tray's **Lock widgets** item and the global short
 
 ## 7. Design system
 
-**Concept: two-ink print.** The big numbers (time, temperature) are printed twice, in ink A and ink B, slightly off-register. That offset is the one bold element; everything else stays quiet.
+**Concept: minimal.** The big numbers (time, temperature) are set thin and large in a single colour. The wallpaper's two inks appear only as small accents; everything else stays quiet.
 
 | CSS variable | Role |
 |---|---|
 | `--paper` | Card background (slightly transparent when themed) |
 | `--paper-solid` | Same colour, opaque (text on accent fills) |
-| `--ink` | Main text |
+| `--ink` | Main text and the big numbers |
 | `--muted` | Secondary text |
-| `--accent-a` | Ink A: big numbers, buttons, today |
-| `--accent-b` | Ink B: off-register copy, bars, event dots |
-| `--blend` | How the inks mix (`multiply` on light, `screen` on dark) |
+| `--accent-a` | Ink A: buttons, today, the progress arc, the tonearm's head |
+| `--accent-b` | Ink B: weather bars, event dots, record label background, focus rings |
+| `--blend` | Still set by `theme.js` (`multiply` on light, `screen` on dark), but no style uses it since the off-register numbers were removed |
 | `--rule` | Hairlines (ink at 15%) |
 
 - Default (no wallpaper): cool paper `#eceef0`, riso blue `#0078bf`, fluorescent pink `#ff48b0`.
-- On dark themes, ink B is placed **behind** ink A instead of blended, because blended inks wash out on dark cards.
 - Paper texture: an SVG noise layer with `mix-blend-mode: overlay`, which works on both light and dark cards.
+- Motion respects Windows' **Animation effects** setting (`prefers-reduced-motion`): when it's off, the record doesn't spin, the tonearm jumps instead of swinging, the toast fades without moving, and calendar months don't slide.
 
-**Typography:** Archivo only. 800 weight at 125% width for big numbers; 62% width for the month name; regular widths for text.
+**Typography:** Jost only. Weight 200 with tabular digits for the big numbers (so the clock doesn't shift as it ticks); 300 for the month name; 500–700 for titles and labels.
 
 ---
 
@@ -230,12 +238,13 @@ Two ways in, one function: the tray's **Lock widgets** item and the global short
 | `weekStartsOn` | `1` | 0 = Sunday, 1 = Monday |
 | `temperatureUnit` | `"celsius"` | or `"fahrenheit"` |
 | `upcomingEvents` | `3` | Events listed under the calendar |
+| `nowPlayingStyle` | `"turntable"` | or `"card"` for the original compact design (the window resizes itself to match) |
 
 **Lock shortcut:** `LOCK_SHORTCUT` at the top of the Lock section in `src-tauri/src/lib.rs` (default `"ctrl+alt+L"`). It's registered in Rust at startup, so it lives there rather than in `config.js`; change it, then rebuild. Also update the menu label text (`Some("Ctrl+Alt+L")`) to match.
 
 **`%APPDATA%\com.deskwidgets.app\settings.json`** (written by the app): `locked` and `hidden` (list of hidden widget labels).
 
-**`src-tauri/tauri.conf.json`:** window labels, default positions, and base window sizes (already multiplied by `scale`). App identifier: `com.deskwidgets.app`. Don't change the identifier; it decides the AppData folder where the Google files live.
+**`src-tauri/tauri.conf.json`:** window labels, default positions, and base window sizes (already multiplied by `scale`). Default positions only matter on first run (after that, the saved positions win), but if a widget's height changes, check the one below it still clears it. App identifier: `com.deskwidgets.app`. Don't change the identifier; it decides the AppData folder where the Google files live.
 
 ---
 
@@ -300,6 +309,7 @@ cargo fmt              # (inside src-tauri) format Rust code
 - **Rust changes:** rebuild automatically in dev mode.
 - **Dev tools:** right-click a widget → **Inspect** (dev mode only).
 - **Design in a normal browser:** serve `src/` with any static server and open `index.html?w=clock` (or `nowplaying`, `weather`, `calendar`). `api.js` fills in sample data. Add `&wp=image.jpg` to test the wallpaper theme with any image.
+- **README screenshot (`preview.png`):** the four browser previews side by side in iframes at their real window sizes, on `#3a405c`, captured with headless Chrome at 2× (`--force-device-scale-factor=2`). Uses sample data, so no real events end up in it. Add `--force-prefers-reduced-motion` so the tonearm is already on the record when the shot is taken, and set a weather city in `localStorage` first.
 
 **Prerequisites on a new PC:** Visual Studio Build Tools with **Desktop development with C++**, Rust (`rustup`), and Node.js LTS.
 
@@ -307,8 +317,8 @@ cargo fmt              # (inside src-tauri) format Rust code
 
 ## 12. Build, install and update
 
-1. `npm run tauri build` (5–15 minutes).
-2. The installer is at `src-tauri\target\release\bundle\nsis\Desk Widgets_0.1.0_x64-setup.exe` (an MSI is also made in `bundle\msi\`).
+1. `npm run tauri build` (5–15 minutes the first time; about a minute after that).
+2. The installer is at `src-tauri\target\release\bundle\nsis\Desk Widgets_<version>_x64-setup.exe` (an MSI is also made in `bundle\msi\`).
 3. Run it. On **"Windows protected your PC"** (the app isn't code-signed), click **More info → Run anyway**.
 4. Tray → tick **Open at login**.
 
@@ -317,9 +327,12 @@ cargo fmt              # (inside src-tauri) format Rust code
 **Publishing a release:**
 
 1. Bump `version` in **three** places: `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`.
-2. `npm run tauri build`, then commit and push.
-3. On GitHub: **Releases → Draft a new release**. Create a tag like `v0.2.0`, write what changed, and attach `src-tauri\target\release\bundle\nsis\Desk Widgets_<version>_x64-setup.exe`.
-4. The README's Download link always points to the newest release (`/releases/latest`), so it never needs editing.
+2. Commit and push everything first, so `git status` is clean. Then `npm run tauri build`. Building from the pushed commit means the installer matches the tag exactly.
+3. Create the release with a tag like `v0.3.0`, say what changed, and attach only `src-tauri\target\release\bundle\nsis\Desk Widgets_<version>_x64-setup.exe`. Either:
+   - On GitHub: **Releases → Draft a new release**, or
+   - With the GitHub CLI: `gh release create v0.3.0 "src-tauri/target/release/bundle/nsis/Desk Widgets_0.3.0_x64-setup.exe" --target <commit sha> --title "Desk Widgets 0.3.0" --notes-file notes.md`
+4. GitHub renames the space in the file name to a dot (`Desk.Widgets_0.3.0_x64-setup.exe`), so release notes should say "the file ending in `x64-setup.exe`" rather than the exact name.
+5. The README's Download link always points to the newest release (`/releases/latest`), so it never needs editing.
 
 Don't run `npm run tauri dev` while the installed app is open, or you'll get two sets of widgets.
 
@@ -393,7 +406,8 @@ Each person's calendar data goes directly between their PC and Google; nobody el
 ## 16. Known limitations
 
 - **Windows only:** the media API, Win+D fix and wallpaper path are Windows-specific.
-- The upcoming list looks 45 days ahead; events further out only show as dots when you navigate to that month.
+- On the current month, the list looks 45 days ahead. Events further out show up (in the grid and the list) once you navigate to their month.
+- Seeking only works in apps that let Windows move their playback position; in others the arc just shows progress.
 - Changing the lock shortcut means editing `lib.rs` and rebuilding (there's no settings window).
 - Hidden widgets keep running in the background (their windows are hidden, not closed).
 - When the wallpaper changes, each of the 4 widgets asks Rust separately, so Rust decodes it 4 times (about 16 ms each). Caching the result in Rust would make it once.
@@ -423,7 +437,8 @@ Options if you want it lower:
 - **Alarms and DND:** built, then dropped, because Windows' own Clock app and Focus already do this well.
 - **Brand verification:** skipped; the app is for personal use.
 - **Code-signing:** skipped. It only removes the SmartScreen warning for people downloading the installer, which doesn't matter for personal use. Revisit only if the app is ever distributed widely.
-- **Dark themes:** ink B sits behind ink A instead of blending, for crisp numbers.
+- **Typography:** went from Archivo with an off-register two-ink effect on the big numbers to Jost, set thin in a single colour, with the inks kept for small accents.
+- **Now playing:** the turntable became the default; the original card design is kept as an option (`nowPlayingStyle: "card"`).
 - **Calendar header on two lines:** "September 2027" plus five controls didn't fit in one line of a 250 px-wide card.
 - **Shared functions for shared actions:** the tray item and the shortcut both call `toggle_lock()`; `events()` and `calendars()` both use `calendar_list()`.
 - **Learning approach:** later features were built partly by hand (typing the change, then a line-by-line review) to learn Rust and Tauri, not just copy code.
@@ -438,6 +453,8 @@ Options if you want it lower:
 | 2026-09-27 | Calendar month navigation (‹ ›, mouse wheel, Today) |
 | 2026-09-28 | Show/hide widgets from the tray, calendar picker for new events, lock shortcut (Ctrl+Alt+L) with toast; wallpaper shrunk in Rust before sending |
 | 2026-09-29 | v0.2.0: first public release on GitHub Releases; README leads with Download |
+| 2026-10-06 | Calendar list follows the month on screen |
+| 2026-10-07 | v0.3.0: minimal typography (Jost), turntable now-playing with progress arc and seeking, weather's default position no longer overlaps now playing; released on GitHub with a new README screenshot |
 
 ## 20. Ideas for later
 
