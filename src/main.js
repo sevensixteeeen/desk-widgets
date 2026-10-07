@@ -53,6 +53,6 @@ function showToast(text) {
 }
 
 root.addEventListener("mousedown", (e) => {
-  if (locked || e.button !== 0 || e.target.closest("button, input, a")) return;
+  if (locked || e.button !== 0 || e.target.closest("button, input, a, [data-no-drag]")) return;
   startDrag();
 });

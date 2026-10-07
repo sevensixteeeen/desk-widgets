@@ -22,13 +22,14 @@ export function onEvent(name, handler) {
 }
 
 export function invoke(command, args) {
-  return inTauri ? tauri.core.invoke(command, args) : sample(command);
+  return inTauri ? tauri.core.invoke(command, args) : sample(command, args);
 }
 
 // ---- Sample data for browser previews ----
-const startedAt = Date.now();
+let startedAt = Date.now(); // `let` so the sample can "seek"
 const dayKey = (iso) => iso.slice(0, 10);
-function sample(command) {
+function sample(command, args) {
+  if (command === "media_seek") startedAt = Date.now() - (args.positionMs - 83000);
   const now = new Date();
   const at = (days, h, m = 0) => {
     const d = new Date(now); d.setDate(d.getDate() + days); d.setHours(h, m, 0, 0); return d.toISOString();
@@ -36,10 +37,11 @@ function sample(command) {
   const data = {
     media_now_playing: {
       title: "Night Drive", artist: "Sample Artist", album: "Preview", app: "Spotify.exe",
-      playing: true, positionMs: 83000 + (Date.now() - startedAt), durationMs: 214000,
+      playing: true, positionMs: 83000 + (Date.now() - startedAt), durationMs: 214000, canSeek: true,
     },
     media_thumbnail: null,
     media_control: null,
+    media_seek: true,
     gcal_status: { configured: true, connected: true, needsReconnect: false, clientPath: "" },
     gcal_events: [
       { title: "Design review", start: at(0, 23, 30), allDay: false, calendar: "Personal", color: "#9fe1e7" },

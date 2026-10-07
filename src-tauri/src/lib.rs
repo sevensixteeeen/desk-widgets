@@ -35,6 +35,13 @@ async fn media_control(action: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+async fn media_seek(position_ms: i64) -> Result<bool, String> {
+    tauri::async_runtime::spawn_blocking(move || media::seek(position_ms))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 fn gcal_status(app: AppHandle) -> Result<gcal::Status, String> {
     gcal::status(&app)
 }
@@ -256,6 +263,7 @@ pub fn run() {
             media_now_playing,
             media_thumbnail,
             media_control,
+            media_seek,
             gcal_status,
             gcal_connect,
             gcal_events,

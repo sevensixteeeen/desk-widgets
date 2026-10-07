@@ -16,6 +16,7 @@ pub struct NowPlaying {
     pub playing: bool,
     pub position_ms: i64,
     pub duration_ms: i64,
+    pub can_seek: bool, // the app lets others move its playback position
 }
 
 // Public functions return `Result<_, String>` because Tauri sends errors to JS as strings.
@@ -29,6 +30,11 @@ pub fn thumbnail() -> Result<Option<String>, String> {
 
 pub fn control(action: &str) -> Result<(), String> {
     imp::control(action).map_err(|e| e.to_string())
+}
+
+/// Jumps to `position_ms` in the current track. Ok(false) = the app refused.
+pub fn seek(position_ms: i64) -> Result<bool, String> {
+    imp::seek(position_ms).map_err(|e| e.to_string())
 }
 
 #[cfg(windows)]
@@ -61,7 +67,13 @@ mod imp {
         let Some(session) = current_session()? else { return Ok(None) };
 
         let props = session.TryGetMediaPropertiesAsync()?.get()?;
-        let playing = session.GetPlaybackInfo()?.PlaybackStatus()? == Status::Playing;
+        let info = session.GetPlaybackInfo()?;
+        let playing = info.PlaybackStatus()? == Status::Playing;
+        // Each app decides whether outside controls may seek. If asking fails, assume not.
+        let can_seek = info
+            .Controls()
+            .and_then(|c| c.IsPlaybackPositionEnabled())
+            .unwrap_or(false);
         let timeline = session.GetTimelineProperties()?;
 
         let duration =
@@ -87,6 +99,7 @@ mod imp {
             playing,
             position_ms: if duration > 0 { position.min(duration) } else { position },
             duration_ms: duration,
+            can_seek,
         }))
     }
 
@@ -123,6 +136,15 @@ mod imp {
         }
         Ok(())
     }
+
+    pub fn seek(position_ms: i64) -> windows::core::Result<bool> {
+        let Some(session) = current_session()? else { return Ok(false) };
+        // The timeline may not start at 0, so positions are measured from its StartTime.
+        let start = session.GetTimelineProperties()?.StartTime()?.Duration;
+        session
+            .TryChangePlaybackPositionAsync(start + position_ms * TICKS_PER_MS)?
+            .get()
+    }
 }
 
 /// Stub so the project still compiles on macOS/Linux (widget just shows "nothing playing").
@@ -132,4 +154,5 @@ mod imp {
     pub fn now_playing() -> Result<Option<NowPlaying>, String> { Ok(None) }
     pub fn thumbnail() -> Result<Option<String>, String> { Ok(None) }
     pub fn control(_: &str) -> Result<(), String> { Ok(()) }
+    pub fn seek(_: i64) -> Result<bool, String> { Ok(false) }
 }
