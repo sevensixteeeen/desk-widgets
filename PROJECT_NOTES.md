@@ -335,7 +335,7 @@ cargo fmt              # (inside src-tauri) format Rust code
 - **Rust changes:** rebuild automatically in dev mode.
 - **Dev tools:** right-click a widget → **Inspect** (dev mode only).
 - **Design in a normal browser:** serve `src/` with any static server and open `index.html?w=clock` (or `nowplaying`, `weather`, `calendar`). `api.js` fills in sample data. Add `&wp=image.jpg` to test the wallpaper theme with any image, and `&zones=Asia/Tokyo,Europe/London` to preview extra clocks.
-- **README screenshot (`preview.png`):** the four browser previews side by side in iframes at their real window sizes, on `#3a405c`, captured with headless Chrome at 2× (`--force-device-scale-factor=2`). Uses sample data, so no real events end up in it. Add `--force-prefers-reduced-motion` so the tonearm is already on the record when the shot is taken, and set a weather city in `localStorage` first.
+- **README screenshot (`preview.png`):** the four browser previews side by side in iframes at their real window sizes, on `#3a405c`, captured with headless Chrome at 2× (`--force-device-scale-factor=2`). Uses sample data, so no real events end up in it. Add `--force-prefers-reduced-motion` so the tonearm is already on the record when the shot is taken, and set a weather city in `localStorage` first. The clock shows three dials with `&zones=Europe/London,America/New_York&sky=clear,partly,clear` at 374×159 (its 3-clock size), with the calendar to its right; the whole shot is 660×558.
 
 **Prerequisites on a new PC:** Visual Studio Build Tools with **Desktop development with C++**, Rust (`rustup`), and Node.js LTS.
 
