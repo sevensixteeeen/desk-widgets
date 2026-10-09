@@ -35,6 +35,7 @@ Everything important about how this project works, why it's built this way, and 
 - **Tray menu:** Show widgets (tick/untick each one), Lock widgets, Open at login, Quit.
 - **Ctrl+Alt+L** locks/unlocks dragging from anywhere, with a brief "Locked"/"Unlocked" message.
 - **Drag to move.** Positions are remembered.
+- **Everything you set up survives a restart** (sizes, added clocks, weather city, positions), even when Windows shuts down without the app being quit.
 - **Resize any widget:** drag the grip in its bottom-right corner, or Ctrl + mouse wheel over it. It scales evenly and remembers its size; double-click the grip for the default size. Locked widgets can't be resized.
 - **One setting sets the default size of everything** (`scale` in `config.js`).
 
@@ -65,6 +66,7 @@ Options considered and rejected: **Electron** (too heavy for always-on widgets) 
 │   ├─ gcal.rs       → Google sign-in, list calendars, read/add events     │
 │   ├─ wallpaper.rs  → reads the current wallpaper file                    │
 │   ├─ settings.rs   → saved settings (lock, hidden widgets)               │
+│   ├─ store.rs      → saved widget setup (sizes, clocks, city)            │
 │   └─ lib.rs        → commands, tray menu, shortcut, plugins, Win+D fix   │
 │                                                                          │
 │  4 windows (WebView2), all loading src/index.html                        │
@@ -91,6 +93,7 @@ desk-widgets/
 │  ├─ index.html                Shared page for every widget window
 │  ├─ main.js                   Widget selection, size (zoom), drag, lock
 │  ├─ resize.js                 Resize grip, Ctrl + wheel, each widget's saved size
+│  ├─ store.js                  Saved sizes, clocks, city, last calendar (widgets.json via Rust)
 │  ├─ api.js                    invoke / events / window helpers (resizeWindow applies scale) + sample data for browser preview
 │  ├─ config.js                 User settings (scale, 12/24h, second hand, week start, units, now-playing style)
 │  ├─ theme.js                  Wallpaper → colour palette
@@ -114,7 +117,8 @@ desk-widgets/
 │     ├─ media.rs
 │     ├─ gcal.rs
 │     ├─ wallpaper.rs
-│     └─ settings.rs
+│     ├─ settings.rs
+│     └─ store.rs
 ├─ .gitignore
 ├─ README.md
 └─ package.json                 Only the Tauri CLI
@@ -139,11 +143,23 @@ Widgets are designed at full size. The page gets CSS `zoom: scale`, and `resizeW
 ### Resize (`resize.js`)
 
 - **Why scaling, not free resizing:** the designs have fixed geometry (the turntable's arm angles, the clock's `CELL` sizes), so a widget grows and shrinks evenly instead of changing shape.
-- **Saved per widget** in `localStorage` as `size.<label>` (e.g. `size.calendar`): a factor on top of `config.scale`, where 1 = default, clamped to 0.6–1.8. `main.js` calls `restoreSize()` *before* mounting the widget, so the clock's first self-resize already uses it.
+- **Saved per widget** in `widgets.json` as `size.<label>` (e.g. `size.calendar`): a factor on top of `config.scale`, where 1 = default, clamped to 0.6–1.8. `main.js` calls `restoreSize()` *before* mounting the widget, so the clock's first self-resize already uses it.
 - **Grip:** bottom-right corner, shown while you point at the widget. It lives on `<body>`, outside the card, so widgets that redraw their card can't remove it, and it doesn't start a window drag. Dragging uses pointer capture, and every move is measured from a snapshot taken at `pointerdown` (screen position + window size), because the grip itself moves under the pointer as the zoom changes. The new size averages how much wider and how much taller the drag would make the window, so dragging along either edge works. Moves are applied once per animation frame. Double-click resets to 100%.
 - **Ctrl + mouse wheel:** a `window` listener in the capture phase (`passive: false`), so it runs before the calendar's own wheel handler (which flips months) and can cancel it. The factor is multiplied by `exp(-deltaY × 0.0005)`: about 5% per mouse notch, and smooth for touchpad pinches, which arrive as many small Ctrl+wheel events.
 - **When a resize ends** (pointer released, or 300 ms after the last wheel event): save the factor, `makeRoom()` so a bigger widget pushes others out of the way, and show the size as a toast ("110%", relative to the default).
 - **Lock** hides the grip and ignores Ctrl + wheel.
+
+### Saved setup (`store.rs`, `store.js`)
+
+Sizes, added clocks, the weather city and the last calendar used are kept in `%APPDATA%\com.deskwidgets.app\widgets.json`, one key each (`size.clock`, `clock.zones`, `weather.city`, `calendar.lastCalendar`, ...), with JSON values.
+
+- **Why not `localStorage`** (where they lived until v0.5.0): WebView2 writes it to disk lazily, into a LevelDB log. Shutting the laptop down ended the app halfway through a write, which left a broken record in that log. From then on, WebView2 dropped everything written after it at every start, so new sizes and clocks were lost on *every* restart, not just once. Its `LOG` file said `dropping … bytes; Corruption: checksum mismatch`. Dev mode also had its own separate copy.
+- **Rust writes the file** the moment something changes: to `widgets.json.tmp` first, flushed to disk, then renamed over the real file, so a shutdown mid-save leaves the old file whole. A file that isn't valid JSON is renamed to `widgets.corrupt.json` instead of being overwritten.
+- **One key per save** (`store_set`), read-modify-write behind a `Mutex`: four windows save to one file, and sending whole snapshots would let one window overwrite another's keys. After saving, Rust emits `store-changed`, so every window's copy stays current (the clock reads the weather widget's city).
+- **JS side:** `main.js` awaits `loadStore()` before `restoreSize()` and mounting, so `getSaved()` answers synchronously after that. `setSaved()` updates the copy and sends the key to Rust. In a browser preview it's plain `localStorage`.
+- **Moving from older versions:** `loadStore()` sends whatever this window's `localStorage` still has for those keys; Rust copies in only keys the file doesn't have yet. `theme.*` stays in `localStorage`: it's only a cache.
+
+**Positions** are saved by `tauri-plugin-window-state`, which only writes its file when the app quits. Windows shutting down doesn't quit it, so `lib.rs` also saves positions half a second after any widget stops moving (`save_positions_after_moves`: one thread waits on a channel that every `WindowEvent::Moved` sends to). The save runs on the main thread, like the plugin's own; from the waiting thread it could deadlock with the plugin's move handler, which locks the same cache.
 
 ### Lock (`lib.rs → toggle_lock`, `settings.rs`, `main.js`)
 
@@ -168,7 +184,7 @@ Two ways in, one function: the tray's **Lock widgets** item and the global short
 - **No digits:** a dial is light from 6 am to 6 pm and dark at night (in both themes), so 3 am and 3 pm look different. Under each added clock: "Today/Tomorrow/Yesterday" and how far it is from you (`+5h 30m`, `−4h`, `+15m`).
 - **Time zones are left to `Intl`:** each zone's wall-clock time comes from `Intl.DateTimeFormat({ timeZone }).formatToParts()`, and the difference is measured between the two wall clocks. Nothing is calculated by hand, so daylight saving and half/quarter-hour zones (India, Nepal) just work.
 - **Adding:** **+** opens a form. What you type is looked up with Open-Meteo's geocoder, which returns the place's time zone (`Japan` → `Asia/Tokyo`, `Dubai` → `Asia/Dubai`). Countries with several zones (United States, Russia, Australia) come back without one, and the form asks for a city instead. `UTC`, `GMT` and IDs with a slash (`Asia/Tokyo`) are used directly, without a network call; that check runs first, or the geocoder would read "UTC" as Utrecht. Plain names like "Japan" or "Singapore" are also old zone aliases, so they're deliberately left to the geocoder to keep the name you typed.
-- **Saved** in `localStorage` (`clock.zones`, as `[{name, timeZone, latitude, longitude}]`; the coordinates are for the sun face's weather, and zone IDs typed directly have none). Zones this PC doesn't recognise are dropped when loading. Names are inserted with `textContent`.
+- **Saved** in `widgets.json` (`clock.zones`, as `[{name, timeZone, latitude, longitude}]`; the coordinates are for the sun face's weather, and zone IDs typed directly have none). Zones this PC doesn't recognise are dropped when loading. Names are inserted with `textContent`.
 - Ticks every second (the second hand, and correct after sleep/resume). With `clockSeconds: false` it only touches the page once a minute.
 - **Faces** live in `dials.js`. Each has `html` (an SVG drawn around (0, 0), so `rotate()` turns about the centre) and `bind(svg)`, which finds the moving parts once and returns `update(time, extra)`. `clock.js` doesn't know which face it's driving. To make a new face, copy an entry and change its drawing.
 - **24-hour sun face:** the hand angle is `hours / 24 × 360 + 180` (the +180 puts midnight at the bottom). The icon on its tip is counter-rotated so it stays upright. The time text sits below the centre by day and above it at night, the half the hand isn't in.
@@ -195,7 +211,7 @@ Two ways in, one function: the tray's **Lock widgets** item and the global short
 
 ### Weather (`weather.js`)
 
-- The city is typed once, geocoded with Open-Meteo, and saved to `localStorage`. Click the city name to change it.
+- The city is typed once, geocoded with Open-Meteo, and saved to `widgets.json`. Click the city name to change it.
 - Refreshes every 15 minutes.
 - Weather codes (WMO) are mapped to words.
 
@@ -212,7 +228,7 @@ Two ways in, one function: the tray's **Lock widgets** item and the global short
 - **Header:** two lines, with the year and a **Today** button (visible only on other months) above the month name and the ‹ › + controls.
 - **Adding:**
   - `gcal_calendars` returns the calendars you can write to (`accessRole` owner or writer, ticked in the sidebar), with your main calendar first.
-  - The form shows a picker with the calendar's colour dot, only when there's more than one. Your last choice is remembered in `localStorage`; the first time, your main calendar is chosen.
+  - The form shows a picker with the calendar's colour dot, only when there's more than one. Your last choice is remembered in `widgets.json`; the first time, your main calendar is chosen.
   - `create_event` posts to the chosen calendar ID. IDs contain `@` and `#`, so the URL is built with `path_segments_mut()`, never by pasting text together.
   - All-day events use `{"date"}` with the end date set to the **next day** (Google treats the end date as exclusive). Timed events use `{"dateTime"}`.
   - The duration box says **All day** until a time is typed. The message line (saving, errors) only appears when needed, stays on one line, and shows the full text on hover.
@@ -292,10 +308,11 @@ Two ways in, one function: the tray's **Lock widgets** item and the global short
 | Google OAuth client | `%APPDATA%\com.deskwidgets.app\google_client.json` | **Never** |
 | Google sign-in token | `%APPDATA%\com.deskwidgets.app\google_token.json` | **Never** |
 | Settings (lock, hidden widgets) | `%APPDATA%\com.deskwidgets.app\settings.json` | No |
-| Widget positions | Saved by the window-state plugin in the app's config folder | No |
-| Weather city, added clocks, widget sizes, theme cache, last calendar used | WebView `localStorage` | No |
+| Widget positions | `%APPDATA%\com.deskwidgets.app\.window-state.json` (window-state plugin) | No |
+| Weather city, added clocks, widget sizes, last calendar used | `%APPDATA%\com.deskwidgets.app\widgets.json` | No |
+| Theme cache | WebView `localStorage` | No |
 
-- Dev mode and the installed app have **separate `localStorage`**, so the weather city and added clocks have to be entered once in each. Files in `%APPDATA%` are shared.
+- Dev mode and the installed app share the files in `%APPDATA%`, so they show the same clocks, sizes and city. Only the theme cache is separate (`localStorage` is per origin: `127.0.0.1:1430` in dev, `tauri.localhost` installed).
 - `.gitignore` blocks `node_modules/`, `src-tauri/target/`, `src-tauri/gen/`, `google_client.json`, `google_token.json`, `client_secret*.json`, `.env*`, `settings.json`, and editor clutter.
 
 ---
@@ -436,6 +453,7 @@ Each person's calendar data goes directly between their PC and Google; nobody el
 | `git push` → Repository not found | The GitHub repo hadn't been created | Create it at github.com/new (no README), push again |
 | VS Code opens the `.exe` as text | VS Code can't run programs | Run it from the terminal with `& ".\path\to\setup.exe"` or from File Explorer |
 | Rust error "`X` is defined multiple times" / "redefined here" | Pasted new code next to the old code instead of replacing it | Delete the duplicate; use **Ctrl+Shift+O** in VS Code to spot items listed twice |
+| Sizes, added clocks or moved widgets gone after restarting the laptop (v0.5.0 and earlier) | Shutdown ended the app mid-write and broke WebView2's `localStorage` log, so every later change was dropped at startup; positions were only saved on **Quit** | v0.5.1 saves to `widgets.json` and saves positions after each move (see Saved setup) |
 | A new feature does nothing | Edits weren't saved (white dot on the tab), or were made in another copy of the project | Save all (**Ctrl+K, S**); check the tab's path is the inner `desk-widgets\desk-widgets` folder |
 
 ---
@@ -505,6 +523,7 @@ Options if you want it lower:
 | 2026-10-09 | v0.4.0: world clock, clock faces, weather and moon, now-playing source; released on GitHub with a new README screenshot |
 | 2026-10-09 | Resize any widget: grip in the bottom-right corner or Ctrl + mouse wheel, saved per widget, double-click for default |
 | 2026-10-09 | v0.5.0: resize any widget; released on GitHub |
+| 2026-10-09 | Sizes, clocks, city and positions survive shutting the laptop down: saved to `widgets.json` instead of `localStorage`, and positions saved after each move |
 
 ## 20. Ideas for later
 

@@ -1,5 +1,6 @@
 import { config } from "../config.js";
 import { inTauri, makeRoom, resizeWindow } from "../api.js";
+import { getSaved, setSaved } from "../store.js";
 import { chosenDial } from "./dials.js";
 import { fetchSkies } from "./sky.js";
 
@@ -60,7 +61,7 @@ export function mountClock(root) {
       return {
         el,
         timeZone: zone.timeZone,
-        place: i === 0 ? JSON.parse(localStorage.getItem(CITY_KEY) || "null") : zone, // where to get its weather
+        place: i === 0 ? getSaved(CITY_KEY) : zone, // where to get its weather
         label: zone.name,
         update: dial.bind(el.querySelector(".dial")), // moves this face's hands/rings/numbers
         name: el.querySelector(".clock-name"),
@@ -154,7 +155,7 @@ export function mountClock(root) {
   }
 
   function saveZones() {
-    localStorage.setItem(ZONES_KEY, JSON.stringify(zones));
+    setSaved(ZONES_KEY, zones);
   }
 
   // ---------- Weather (only for faces that show it) ----------
@@ -173,7 +174,7 @@ export function mountClock(root) {
     }
     if (changed) saveZones();
 
-    const here = JSON.parse(localStorage.getItem(CITY_KEY) || "null");
+    const here = getSaved(CITY_KEY);
     const places = [here, ...zones].filter((p) => p?.latitude != null);
     if (!places.length) return;
     try {
@@ -207,7 +208,7 @@ function loadZones() {
   const preview = !inTauri && new URLSearchParams(location.search).get("zones");
   const list = preview
     ? preview.split(",").map((tz) => ({ name: cityOf(tz), timeZone: tz }))
-    : JSON.parse(localStorage.getItem(ZONES_KEY) || "[]");
+    : getSaved(ZONES_KEY) ?? [];
   return list.filter((z) => checkZone(z.timeZone)); // drop anything this PC doesn't know
 }
 

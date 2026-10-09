@@ -4,6 +4,7 @@
 
 import { config } from "./config.js";
 import { widgetName, setScale, windowSize, makeRoom } from "./api.js";
+import { getSaved, setSaved } from "./store.js";
 
 const KEY = `size.${widgetName}`; // this widget's size on top of config.scale; 1 = default
 const MIN = 0.6, MAX = 1.8;
@@ -21,7 +22,7 @@ function apply(f) {
 
 /** Puts back this widget's saved size. Runs before the widget mounts, so its first resize is already right. */
 export function restoreSize() {
-  apply(Number(localStorage.getItem(KEY)) || 1);
+  apply(Number(getSaved(KEY)) || 1);
 }
 
 export function startResizing({ isLocked, showToast }) {
@@ -35,7 +36,7 @@ export function startResizing({ isLocked, showToast }) {
   // End of a resize: remember it, say the new size, and once the window has its new size,
   // move any widget it now covers (makeRoom measures the window, so it has to wait).
   async function finish() {
-    localStorage.setItem(KEY, factor);
+    setSaved(KEY, factor);
     showToast(`${Math.round(factor * 100)}%`);
     await resizing;
     makeRoom();

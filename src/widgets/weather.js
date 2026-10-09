@@ -1,4 +1,5 @@
 import { config } from "../config.js";
+import { getSaved, setSaved } from "../store.js";
 
 // Open-Meteo: free, no API key. Docs: https://open-meteo.com/en/docs
 const GEO_URL = "https://geocoding-api.open-meteo.com/v1/search";
@@ -18,7 +19,7 @@ const CONDITIONS = {
 
 export function mountWeather(root) {
   let timer = null;
-  const saved = JSON.parse(localStorage.getItem(CITY_KEY) || "null");
+  const saved = getSaved(CITY_KEY);
   saved ? showWeather(saved) : askCity();
 
   function askCity(message = "") {
@@ -40,7 +41,7 @@ export function mountWeather(root) {
         const place = res.results?.[0];
         if (!place) return askCity(`No city called "${name}". Check the spelling.`);
         const city = { name: place.name, latitude: place.latitude, longitude: place.longitude };
-        localStorage.setItem(CITY_KEY, JSON.stringify(city));
+        setSaved(CITY_KEY, city);
         showWeather(city);
       } catch {
         askCity("Can't reach the weather service. Check your connection.");

@@ -1,13 +1,15 @@
 mod gcal;
 mod media;
 mod settings;
+mod store;
 mod wallpaper;
 
 use tauri::{
     menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu},
     tray::TrayIconBuilder,
-    AppHandle, Emitter, Manager, Wry,
+    AppHandle, Emitter, Manager, WindowEvent, Wry,
 };
+use std::{sync::mpsc, time::Duration};
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 use tauri_plugin_window_state::{AppHandleExt, StateFlags};
@@ -84,6 +86,16 @@ fn get_settings(app: AppHandle) -> settings::Settings {
 }
 
 #[tauri::command]
+fn store_load(app: AppHandle, legacy: store::Store) -> Result<store::Store, String> {
+    store::load(&app, legacy)
+}
+
+#[tauri::command]
+fn store_set(app: AppHandle, key: String, value: serde_json::Value) -> Result<(), String> {
+    store::set(&app, key, value)
+}
+
+#[tauri::command]
 async fn wallpaper(known: Option<String>) -> Result<Option<wallpaper::Wallpaper>, String> {
     wallpaper::read(known)
 }
@@ -106,6 +118,28 @@ fn pin_to_desktop(window: &tauri::WebviewWindow) {
     unsafe {
         SetWindowLongPtrW(HWND(hwnd.0), GWLP_HWNDPARENT, desktop.0 as isize);
     }
+}
+
+// ---------- Saving positions ----------
+
+/// The window-state plugin only writes positions to disk when the app quits, but shutting
+/// Windows down ends the app without quitting it, so a moved widget came back where it was.
+/// Instead, save half a second after widgets stop moving. Send () on every move.
+fn save_positions_after_moves(app: &AppHandle) -> mpsc::Sender<()> {
+    let (moved, moves) = mpsc::channel();
+    let app = app.clone();
+    std::thread::spawn(move || {
+        while moves.recv().is_ok() {
+            while moves.recv_timeout(Duration::from_millis(500)).is_ok() {} // still moving
+            // On the main thread, like the plugin's own save at quit: from here it could deadlock
+            // with the plugin's move handler.
+            let handle = app.clone();
+            let _ = app.run_on_main_thread(move || {
+                let _ = handle.save_window_state(StateFlags::POSITION);
+            });
+        }
+    });
+    moved
 }
 
 // ---------- Show / hide widgets ----------
@@ -247,9 +281,17 @@ pub fn run() {
                 })
                 .build(app)?;
 
+            let moved = save_positions_after_moves(app.handle());
             for window in app.webview_windows().values() {
                 #[cfg(windows)]
                 pin_to_desktop(window);
+
+                let moved = moved.clone();
+                window.on_window_event(move |event| {
+                    if let WindowEvent::Moved(_) = event {
+                        let _ = moved.send(());
+                    }
+                });
 
                 // Windows start hidden (tauri.conf.json), so hidden widgets never flash on screen.
                 if !saved.hidden.iter().any(|h| h == window.label()) {
@@ -271,6 +313,8 @@ pub fn run() {
             gcal_calendars,
             gcal_disconnect,
             get_settings,
+            store_load,
+            store_set,
             wallpaper
         ])
         .run(tauri::generate_context!())

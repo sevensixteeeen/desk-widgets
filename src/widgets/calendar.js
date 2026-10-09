@@ -1,5 +1,6 @@
 import { invoke } from "../api.js";
 import { config } from "../config.js";
+import { getSaved, setSaved } from "../store.js";
 
 const REFRESH_MS = 10 * 60 * 1000;
 const UPCOMING_DAYS = 45; // how far ahead the "upcoming" list looks
@@ -268,7 +269,7 @@ export function mountCalendar(root) {
     // Calendar picker. Names and colours come from Google, so they're set with
     // new Option(text, value) and style (never inserted as HTML).
     for (const cal of calendars) form.calendar.add(new Option(cal.name, cal.id));
-    const last = localStorage.getItem(LAST_CALENDAR_KEY);
+    const last = getSaved(LAST_CALENDAR_KEY);
     const initial = calendars.find((c) => c.id === last) ?? calendars.find((c) => c.primary) ?? calendars[0];
     if (initial) form.calendar.value = initial.id;
     const dot = form.querySelector(".cal-pick .cal-dot");
@@ -331,7 +332,7 @@ export function mountCalendar(root) {
       msg.textContent = "Adding…";
       try {
         await invoke("gcal_create_event", { title, start, end, allDay, calendarId });
-        if (form.calendar.value) localStorage.setItem(LAST_CALENDAR_KEY, calendarId);
+        if (form.calendar.value) setSaved(LAST_CALENDAR_KEY, calendarId);
         closeForm();
         loadEvents(); // refreshes the list and the month on screen
       } catch (err) {

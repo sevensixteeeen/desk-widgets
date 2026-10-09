@@ -1,6 +1,7 @@
 import { config } from "./config.js";
 import { inTauri, invoke, widgetName, startDrag, resizeWindow, onEvent } from "./api.js";
 import { startTheme } from "./theme.js";
+import { loadStore } from "./store.js";
 import { restoreSize, startResizing } from "./resize.js";
 import { mountClock } from "./widgets/clock.js";
 import { mountNowPlaying } from "./widgets/nowplaying.js";
@@ -14,6 +15,10 @@ const widgets = {
   calendar: { mount: mountCalendar, size: [320, 490] },
 };
 const widget = widgets[widgetName];
+
+// ---- Saved setup ----
+// Sizes, clocks and the weather city, read once before anything below asks for them.
+await loadStore();
 
 // ---- Size ----
 // Widgets are designed at full size; `zoom` shrinks everything inside evenly,
