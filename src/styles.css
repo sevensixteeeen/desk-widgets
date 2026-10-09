@@ -71,6 +71,19 @@ body {
 @media (prefers-reduced-motion: reduce) { .toast { animation-name: toast-fade; } }
 @keyframes toast-fade { 0%, 100% { opacity: 0; transform: translate(-50%, -50%); } 15%, 75% { opacity: 1; transform: translate(-50%, -50%); } }
 
+/* Resize grip (resize.js), in the card's bottom-right padding. Shows while you point at the widget;
+   gone while locked. It's on <body>, outside the card, like the toast. */
+.resize-grip {
+  position: fixed; right: 4px; bottom: 4px; z-index: 5; width: 18px; height: 18px;
+  display: grid; place-items: center; border-radius: 50%;
+  color: var(--muted); cursor: nwse-resize; touch-action: none;
+  opacity: 0; transition: opacity 0.15s;
+}
+body:hover .resize-grip { opacity: 0.7; }
+.resize-grip:hover, .resize-grip:active { opacity: 1; color: var(--ink); }
+.is-locked .resize-grip { display: none; }
+.resize-grip svg { width: 10px; height: 10px; fill: currentColor; }
+
 .card::before {
   content: "";
   position: absolute;

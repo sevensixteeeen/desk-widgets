@@ -35,7 +35,8 @@ Everything important about how this project works, why it's built this way, and 
 - **Tray menu:** Show widgets (tick/untick each one), Lock widgets, Open at login, Quit.
 - **Ctrl+Alt+L** locks/unlocks dragging from anywhere, with a brief "Locked"/"Unlocked" message.
 - **Drag to move.** Positions are remembered.
-- **One setting resizes everything** (`scale` in `config.js`).
+- **Resize any widget:** drag the grip in its bottom-right corner, or Ctrl + mouse wheel over it. It scales evenly and remembers its size; double-click the grip for the default size. Locked widgets can't be resized.
+- **One setting sets the default size of everything** (`scale` in `config.js`).
 
 ---
 
@@ -89,6 +90,7 @@ desk-widgets/
 ├─ src/                         Frontend
 │  ├─ index.html                Shared page for every widget window
 │  ├─ main.js                   Widget selection, size (zoom), drag, lock
+│  ├─ resize.js                 Resize grip, Ctrl + wheel, each widget's saved size
 │  ├─ api.js                    invoke / events / window helpers (resizeWindow applies scale) + sample data for browser preview
 │  ├─ config.js                 User settings (scale, 12/24h, second hand, week start, units, now-playing style)
 │  ├─ theme.js                  Wallpaper → colour palette
@@ -130,13 +132,22 @@ Each widget window is `decorations: false` (no frame), `transparent: true`, `sha
 
 Win+D minimizes every normal window. Windows **owned by the desktop** (`Progman`, the system window that draws desktop icons) count as part of the desktop and stay visible. On startup, each widget's owner is set to `Progman` with `SetWindowLongPtrW(hwnd, GWLP_HWNDPARENT, progman)`.
 
-### Size (`config.js → scale`, `main.js`)
+### Size (`config.js → scale`, `api.js`, `resize.js`)
 
-Widgets are designed at full size. `main.js` applies CSS `zoom: scale` to the page, and `resizeWindow()` in `api.js` shrinks the window by the same factor, so one number resizes everything. Current value: `0.78`. Every widget has a fixed size in `main.js` except the clock, which works out its own as clocks are added.
+Widgets are designed at full size. The page gets CSS `zoom: scale`, and `resizeWindow()` in `api.js` shrinks the window by the same factor, so the card always fills its window. `scale` is `config.scale` (default `0.78`) times the widget's own size factor. Every widget has a fixed design size in `main.js` except the clock, which works out its own as clocks are added. `resizeWindow()` remembers the last design size it was given, so a new scale can re-apply it.
+
+### Resize (`resize.js`)
+
+- **Why scaling, not free resizing:** the designs have fixed geometry (the turntable's arm angles, the clock's `CELL` sizes), so a widget grows and shrinks evenly instead of changing shape.
+- **Saved per widget** in `localStorage` as `size.<label>` (e.g. `size.calendar`): a factor on top of `config.scale`, where 1 = default, clamped to 0.6–1.8. `main.js` calls `restoreSize()` *before* mounting the widget, so the clock's first self-resize already uses it.
+- **Grip:** bottom-right corner, shown while you point at the widget. It lives on `<body>`, outside the card, so widgets that redraw their card can't remove it, and it doesn't start a window drag. Dragging uses pointer capture, and every move is measured from a snapshot taken at `pointerdown` (screen position + window size), because the grip itself moves under the pointer as the zoom changes. The new size averages how much wider and how much taller the drag would make the window, so dragging along either edge works. Moves are applied once per animation frame. Double-click resets to 100%.
+- **Ctrl + mouse wheel:** a `window` listener in the capture phase (`passive: false`), so it runs before the calendar's own wheel handler (which flips months) and can cancel it. The factor is multiplied by `exp(-deltaY × 0.0005)`: about 5% per mouse notch, and smooth for touchpad pinches, which arrive as many small Ctrl+wheel events.
+- **When a resize ends** (pointer released, or 300 ms after the last wheel event): save the factor, `makeRoom()` so a bigger widget pushes others out of the way, and show the size as a toast ("110%", relative to the default).
+- **Lock** hides the grip and ignores Ctrl + wheel.
 
 ### Lock (`lib.rs → toggle_lock`, `settings.rs`, `main.js`)
 
-Two ways in, one function: the tray's **Lock widgets** item and the global shortcut **Ctrl+Alt+L** both call `toggle_lock()`, which flips `locked` in `settings.json`, updates the tray tick, and emits `lock-changed`. Every widget then ignores drag attempts.
+Two ways in, one function: the tray's **Lock widgets** item and the global shortcut **Ctrl+Alt+L** both call `toggle_lock()`, which flips `locked` in `settings.json`, updates the tray tick, and emits `lock-changed`. Every widget then ignores drag and resize attempts.
 
 - **Global shortcut:** `tauri-plugin-global-shortcut`, registered in Rust at startup with `on_shortcut(LOCK_SHORTCUT, ...)`. The handler acts only on `ShortcutState::Pressed` (Windows reports press and release). The library registers with Windows' no-repeat flag, so holding the keys doesn't flicker the lock.
 - **If the shortcut is taken** by another app, registering fails; the error is logged and the app carries on (the tray item still works).
@@ -257,7 +268,7 @@ Two ways in, one function: the tray's **Lock widgets** item and the global short
 
 | Setting | Current | Meaning |
 |---|---|---|
-| `scale` | `0.78` | Widget size (1 = original) |
+| `scale` | `0.78` | Default widget size (1 = original). Each widget's own size (grip / Ctrl + wheel) multiplies it |
 | `hour12` | `false` | 12h or 24h times in the calendar |
 | `clockSeconds` | `true` | Second hand on the clocks |
 | `clockStyle` | `"sun"` | Clock face: `classic`, `numerals`, `rings`, `sun`, `bezel` or `digital` |
@@ -282,7 +293,7 @@ Two ways in, one function: the tray's **Lock widgets** item and the global short
 | Google sign-in token | `%APPDATA%\com.deskwidgets.app\google_token.json` | **Never** |
 | Settings (lock, hidden widgets) | `%APPDATA%\com.deskwidgets.app\settings.json` | No |
 | Widget positions | Saved by the window-state plugin in the app's config folder | No |
-| Weather city, added clocks, theme cache, last calendar used | WebView `localStorage` | No |
+| Weather city, added clocks, widget sizes, theme cache, last calendar used | WebView `localStorage` | No |
 
 - Dev mode and the installed app have **separate `localStorage`**, so the weather city and added clocks have to be entered once in each. Files in `%APPDATA%` are shared.
 - `.gitignore` blocks `node_modules/`, `src-tauri/target/`, `src-tauri/gen/`, `google_client.json`, `google_token.json`, `client_secret*.json`, `.env*`, `settings.json`, and editor clutter.
@@ -438,6 +449,8 @@ Each person's calendar data goes directly between their PC and Google; nobody el
 - The sun face switches between sun and moon at a fixed 6 am / 6 pm, not each city's real sunrise and sunset. The moon is drawn as seen from the northern hemisphere.
 - Changing the lock shortcut means editing `lib.rs` and rebuilding (there's no settings window).
 - Hidden widgets keep running in the background (their windows are hidden, not closed).
+- A widget saved at a non-default size jumps to it a moment after startup: Rust shows the window at its `tauri.conf.json` size before the page loads and restores the size.
+- Widgets only scale evenly; you can't make one wider without making it taller.
 - When the wallpaper changes, each of the 4 widgets asks Rust separately, so Rust decodes it 4 times (about 16 ms each). Caching the result in Rust would make it once.
 - The installer is **unsigned**, so SmartScreen shows a warning on install.
 - Adding a clock by place name needs internet (zone IDs like `UTC` or `Asia/Tokyo` don't). Once added, clocks work offline.
@@ -490,6 +503,7 @@ Options if you want it lower:
 | 2026-10-09 | Analog clock with extra clocks for other cities and countries (add with +, remove with ×) |
 | 2026-10-09 | Six clock faces; 24-hour sun face with each city's weather by day and the real moon phase at night. Now playing shows Spotify/YouTube and the full song name |
 | 2026-10-09 | v0.4.0: world clock, clock faces, weather and moon, now-playing source; released on GitHub with a new README screenshot |
+| 2026-10-09 | Resize any widget: grip in the bottom-right corner or Ctrl + mouse wheel, saved per widget, double-click for default |
 
 ## 20. Ideas for later
 

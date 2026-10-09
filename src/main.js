@@ -1,6 +1,7 @@
 import { config } from "./config.js";
 import { inTauri, invoke, widgetName, startDrag, resizeWindow, onEvent } from "./api.js";
 import { startTheme } from "./theme.js";
+import { restoreSize, startResizing } from "./resize.js";
 import { mountClock } from "./widgets/clock.js";
 import { mountNowPlaying } from "./widgets/nowplaying.js";
 import { mountWeather } from "./widgets/weather.js";
@@ -17,7 +18,9 @@ const widget = widgets[widgetName];
 // ---- Size ----
 // Widgets are designed at full size; `zoom` shrinks everything inside evenly,
 // and resizeWindow shrinks the window by the same factor so the card still fills it.
-document.documentElement.style.zoom = config.scale;
+// The factor is config.scale times this widget's own size (resize.js), restored before
+// mounting so a widget that sizes itself (the clock) starts at the right size.
+restoreSize();
 if (widget.size) resizeWindow(...widget.size);
 
 // ---- Theme from wallpaper ----
@@ -55,3 +58,7 @@ root.addEventListener("mousedown", (e) => {
   if (locked || e.button !== 0 || e.target.closest("button, input, a, [data-no-drag]")) return;
   startDrag();
 });
+
+// ---- Resize ----
+// Grip in the bottom-right corner, or Ctrl + mouse wheel. Off while locked.
+startResizing({ isLocked: () => locked, showToast });

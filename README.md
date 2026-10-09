@@ -26,12 +26,14 @@ Desktop widgets for Windows: an analog world clock, now playing, weather, and Go
 - **Calendar:** month view (browse with ‹ › or the mouse wheel) with events from every calendar ticked in your Google Calendar. The list under it follows the month on screen: upcoming events for this month, that month's events when you browse to another. Click a day or **+** to add an event to whichever calendar you choose.
 - **Themed from your wallpaper:** colours are pulled from your current wallpaper and update when you change it.
 - **Stays on the desktop:** behind your apps, and still visible after Win+D.
+- **Resizable:** make any widget bigger or smaller; each one remembers its size.
 - **Tray menu:** Show widgets (hide the ones you don't want), Lock widgets (stops accidental dragging), Open at login, Quit.
 - **Ctrl+Alt+L** locks/unlocks the widgets from anywhere.
 
 ## Using it
 
 - **Move a widget:** drag it. Positions are remembered.
+- **Resize a widget:** drag the small grip in its bottom-right corner (it appears when you point at the widget), or hold **Ctrl** and scroll the mouse wheel over it. Double-click the grip to go back to the default size.
 - **Lock them in place:** tray → **Lock widgets**, or **Ctrl+Alt+L** from anywhere.
 - **Hide a widget:** tray → **Show widgets** → untick it.
 - **Jump to a point in the song:** click or drag the arc around the record.
@@ -64,6 +66,7 @@ Everything stays on your PC. The Google client file and sign-in token live in `%
 src/                   Frontend (plain HTML/CSS/JS, no bundler)
   config.js            Your settings: size, 12/24h, week start, °C/°F, clock face, now-playing style
   main.js              Picks the widget for each window; size, drag and lock
+  resize.js            Resize grip and Ctrl + wheel; remembers each widget's size
   theme.js             Turns the wallpaper into a colour palette
   api.js               Talks to Rust, or returns sample data in a normal browser
   styles.css           Design system and all widget styles

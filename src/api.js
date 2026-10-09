@@ -14,11 +14,31 @@ export function startDrag() {
   if (inTauri) tauri.window.getCurrentWindow().startDragging();
 }
 
+// ---- Size ----
+// Widgets are designed at full size. `scale` shrinks the page (zoom) and the window by the same
+// amount. It starts at config.scale; resize.js changes it per widget.
+let scale = config.scale;
+let designSize = null; // the full-size [width, height] the widget last asked for
+
 /** Sizes the window for a widget designed at width x height; `scale` shrinks it like the page zoom. */
 export async function resizeWindow(width, height) {
+  designSize = [width, height];
   if (!inTauri) return;
-  const size = new tauri.dpi.LogicalSize(Math.round(width * config.scale), Math.round(height * config.scale));
+  const size = new tauri.dpi.LogicalSize(Math.round(width * scale), Math.round(height * scale));
   await tauri.window.getCurrentWindow().setSize(size);
+}
+
+/** New scale: the page zooms now, and the window follows (same design size, new scale). */
+export function setScale(value) {
+  scale = value;
+  document.documentElement.style.zoom = value;
+  return designSize ? resizeWindow(...designSize) : Promise.resolve();
+}
+
+/** The window's current size in screen pixels (logical, like screenX), worked out from the design size. */
+export function windowSize() {
+  const [w, h] = designSize ?? [innerWidth / scale, innerHeight / scale];
+  return [w * scale, h * scale];
 }
 
 /**
