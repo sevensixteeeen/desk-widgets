@@ -152,11 +152,12 @@ Two ways in, one function: the tray's **Lock widgets** item and the global short
 
 ### Clock (`clock.js`)
 
-- **One analog dial per place:** yours first (its name line shows the weekday and date), then the ones you've added, four to a row. The window grows to fit, using the same sizes as the CSS (`CELL`, `GAP`, `PAD` in `clock.js`). Up to 8 clocks; the **+** hides at the limit.
+- **One analog dial per place:** yours first (its name line shows the weekday and date), then the ones you've added, three to a row (`PER_ROW`). The window grows to fit, using the same sizes as the CSS (`CELL`, `GAP`, `PAD` in `clock.js`). Up to 8 clocks; the **+** hides at the limit.
+- **Making room:** after the clock resizes, `makeRoom()` (`api.js`) moves any visible widget it now overlaps to just below it, or to its right when there's no room below on the screen. A moved widget can push the next one the same way. It works in physical pixels, and needs the `core:window:allow-set-position` permission in `capabilities/default.json`.
 - **No digits:** a dial is light from 6 am to 6 pm and dark at night (in both themes), so 3 am and 3 pm look different. Under each added clock: "Today/Tomorrow/Yesterday" and how far it is from you (`+5h 30m`, `−4h`, `+15m`).
 - **Time zones are left to `Intl`:** each zone's wall-clock time comes from `Intl.DateTimeFormat({ timeZone }).formatToParts()`, and the difference is measured between the two wall clocks. Nothing is calculated by hand, so daylight saving and half/quarter-hour zones (India, Nepal) just work.
 - **Adding:** **+** opens a form. What you type is looked up with Open-Meteo's geocoder, which returns the place's time zone (`Japan` → `Asia/Tokyo`, `Dubai` → `Asia/Dubai`). Countries with several zones (United States, Russia, Australia) come back without one, and the form asks for a city instead. `UTC`, `GMT` and IDs with a slash (`Asia/Tokyo`) are used directly, without a network call; that check runs first, or the geocoder would read "UTC" as Utrecht. Plain names like "Japan" or "Singapore" are also old zone aliases, so they're deliberately left to the geocoder to keep the name you typed.
-- **Saved** in `localStorage` (`clock.zones`, as `[{name, timeZone}]`). Zones this PC doesn't recognise are dropped when loading. Names are inserted with `textContent`.
+- **Saved** in `localStorage` (`clock.zones`, as `[{name, timeZone, latitude, longitude}]`; the coordinates are for the sun face's weather, and zone IDs typed directly have none). Zones this PC doesn't recognise are dropped when loading. Names are inserted with `textContent`.
 - Ticks every second (the second hand, and correct after sleep/resume). With `clockSeconds: false` it only touches the page once a minute.
 - **Faces** live in `dials.js`. Each has `html` (an SVG drawn around (0, 0), so `rotate()` turns about the centre) and `bind(svg)`, which finds the moving parts once and returns `update(time, extra)`. `clock.js` doesn't know which face it's driving. To make a new face, copy an entry and change its drawing.
 - **24-hour sun face:** the hand angle is `hours / 24 × 360 + 180` (the +180 puts midnight at the bottom). The icon on its tip is counter-rotated so it stays upright. The time text sits below the centre by day and above it at night, the half the hand isn't in.
@@ -440,7 +441,7 @@ Each person's calendar data goes directly between their PC and Google; nobody el
 - When the wallpaper changes, each of the 4 widgets asks Rust separately, so Rust decodes it 4 times (about 16 ms each). Caching the result in Rust would make it once.
 - The installer is **unsigned**, so SmartScreen shows a warning on install.
 - Adding a clock by place name needs internet (zone IDs like `UTC` or `Asia/Tokyo` don't). Once added, clocks work offline.
-- The clock widget grows to the right (and down after 4 clocks), so at the default positions it can end up over the calendar; drag one of them.
+- When the clock grows, widgets it covers are moved out of the way, but they don't move back when it shrinks again.
 
 ---
 
