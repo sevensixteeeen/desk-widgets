@@ -524,6 +524,7 @@ Options if you want it lower:
 | 2026-10-09 | Resize any widget: grip in the bottom-right corner or Ctrl + mouse wheel, saved per widget, double-click for default |
 | 2026-10-09 | v0.5.0: resize any widget; released on GitHub |
 | 2026-10-09 | Sizes, clocks, city and positions survive shutting the laptop down: saved to `widgets.json` instead of `localStorage`, and positions saved after each move |
+| 2026-10-09 | v0.5.1: widget setup survives shutting the laptop down; released on GitHub |
 
 ## 20. Ideas for later
 
