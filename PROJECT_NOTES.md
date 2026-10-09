@@ -10,7 +10,7 @@ Everything important about how this project works, why it's built this way, and 
 
 | Widget | What it shows | Data source |
 |---|---|---|
-| **Clock** | Time and date | System clock |
+| **Clock** | Analog clocks: yours with today's date, plus any cities or countries you add | System clock; Open-Meteo geocoding finds a place's time zone |
 | **Now playing** | Turntable: current song, album art on the record, tonearm + progress arc, play/pause/skip, seek | Windows media session API |
 | **Weather** | Temperature, conditions, high/low, next 6 hours | Open-Meteo (free, no API key) |
 | **Calendar** | Month view with navigation, upcoming events, add events to any of your calendars | Google Calendar API |
@@ -24,7 +24,10 @@ Everything important about how this project works, why it's built this way, and 
 
 - Widgets sit **behind all apps** on the desktop and **survive Win+D** (Show desktop).
 - **Colours come from your wallpaper** and update automatically when the wallpaper changes.
-- **Now playing** works with Spotify, YouTube in Chrome, or any app that reports media to Windows, with no login. It's drawn as a turntable: the record spins while playing, and the tonearm creeps inward as the song goes on.
+- **World clock:** one dial per place, light by day and dark by night. Click **+** to add a city or country; point at a clock and click **×** to remove it.
+- **Six clock faces** (`clockStyle` in `config.js`): classic, numerals, rings, 24-hour sun (default), turning bezel, digital ring.
+- **24-hour sun face:** one turn is a whole day (noon at the top, midnight at the bottom, the night half shaded). The hand ends in that city's current **weather** by day (sun, partly cloudy, cloud, rain, snow, storm, fog) and **tonight's moon** at night, drawn in its real phase so it changes shape every night.
+- **Now playing** works with Spotify, YouTube in Chrome, or any app that reports media to Windows, with no login. It's drawn as a turntable: the record spins while playing, and the tonearm creeps inward as the song goes on. The real album cover is the record's label. It shows which app is playing (**Spotify** or **YouTube**), and the **full song name**: long names wrap and shrink to fit instead of being cut off.
 - **Seek:** click or drag the arc around the record to jump anywhere in the song (only in apps that let Windows move their playback position).
 - **Calendar** shows events from every calendar ticked in the Google Calendar sidebar (holidays, shared, work). Each event has a dot in its calendar's colour. The list under the grid follows the month on screen.
 - **Browse months** with ‹ ›, or the mouse wheel over the dates; **Today** jumps back.
@@ -86,13 +89,15 @@ desk-widgets/
 ├─ src/                         Frontend
 │  ├─ index.html                Shared page for every widget window
 │  ├─ main.js                   Widget selection, size (zoom), drag, lock
-│  ├─ api.js                    invoke / events / window helpers + sample data for browser preview
-│  ├─ config.js                 User settings (scale, 12/24h, week start, units, now-playing style)
+│  ├─ api.js                    invoke / events / window helpers (resizeWindow applies scale) + sample data for browser preview
+│  ├─ config.js                 User settings (scale, 12/24h, second hand, week start, units, now-playing style)
 │  ├─ theme.js                  Wallpaper → colour palette
 │  ├─ styles.css                Design system and all widget styles
 │  ├─ fonts/jost.woff2          Bundled variable font (+ licence)
 │  └─ widgets/
-│     ├─ clock.js
+│     ├─ clock.js        world clocks: layout, time zones, adding cities, fetching weather
+│     ├─ dials.js        the six clock faces (pick one with clockStyle)
+│     ├─ sky.js          weather icons, weather codes, moon phase
 │     ├─ nowplaying.js
 │     ├─ weather.js
 │     └─ calendar.js
@@ -127,7 +132,7 @@ Win+D minimizes every normal window. Windows **owned by the desktop** (`Progman`
 
 ### Size (`config.js → scale`, `main.js`)
 
-Widgets are designed at full size. `main.js` applies CSS `zoom: scale` to the page and resizes the window by the same factor, so one number resizes everything. Current value: `0.78`.
+Widgets are designed at full size. `main.js` applies CSS `zoom: scale` to the page, and `resizeWindow()` in `api.js` shrinks the window by the same factor, so one number resizes everything. Current value: `0.78`. Every widget has a fixed size in `main.js` except the clock, which works out its own as clocks are added.
 
 ### Lock (`lib.rs → toggle_lock`, `settings.rs`, `main.js`)
 
@@ -145,12 +150,28 @@ Two ways in, one function: the tray's **Lock widgets** item and the global short
 - `toggle_widget()` calls `window.hide()` / `window.show()` and keeps the list of hidden labels in `settings.json` (`"hidden": ["weather"]`), so the choice survives restarts.
 - Hidden widgets are hidden, not closed: their pages keep running in the background.
 
+### Clock (`clock.js`)
+
+- **One analog dial per place:** yours first (its name line shows the weekday and date), then the ones you've added, four to a row. The window grows to fit, using the same sizes as the CSS (`CELL`, `GAP`, `PAD` in `clock.js`). Up to 8 clocks; the **+** hides at the limit.
+- **No digits:** a dial is light from 6 am to 6 pm and dark at night (in both themes), so 3 am and 3 pm look different. Under each added clock: "Today/Tomorrow/Yesterday" and how far it is from you (`+5h 30m`, `−4h`, `+15m`).
+- **Time zones are left to `Intl`:** each zone's wall-clock time comes from `Intl.DateTimeFormat({ timeZone }).formatToParts()`, and the difference is measured between the two wall clocks. Nothing is calculated by hand, so daylight saving and half/quarter-hour zones (India, Nepal) just work.
+- **Adding:** **+** opens a form. What you type is looked up with Open-Meteo's geocoder, which returns the place's time zone (`Japan` → `Asia/Tokyo`, `Dubai` → `Asia/Dubai`). Countries with several zones (United States, Russia, Australia) come back without one, and the form asks for a city instead. `UTC`, `GMT` and IDs with a slash (`Asia/Tokyo`) are used directly, without a network call; that check runs first, or the geocoder would read "UTC" as Utrecht. Plain names like "Japan" or "Singapore" are also old zone aliases, so they're deliberately left to the geocoder to keep the name you typed.
+- **Saved** in `localStorage` (`clock.zones`, as `[{name, timeZone}]`). Zones this PC doesn't recognise are dropped when loading. Names are inserted with `textContent`.
+- Ticks every second (the second hand, and correct after sleep/resume). With `clockSeconds: false` it only touches the page once a minute.
+- **Faces** live in `dials.js`. Each has `html` (an SVG drawn around (0, 0), so `rotate()` turns about the centre) and `bind(svg)`, which finds the moving parts once and returns `update(time, extra)`. `clock.js` doesn't know which face it's driving. To make a new face, copy an entry and change its drawing.
+- **24-hour sun face:** the hand angle is `hours / 24 × 360 + 180` (the +180 puts midnight at the bottom). The icon on its tip is counter-rotated so it stays upright. The time text sits below the centre by day and above it at night, the half the hand isn't in.
+  - **Weather** (`sky.js`): one Open-Meteo request for all clocks at once (it accepts comma-separated latitudes and longitudes), every 20 minutes. Your own clock uses the weather widget's city (`weather.city`); added clocks store their coordinates when added, and older ones are looked up by name once. The WMO weather code is mapped to one of 7 icons. Zone IDs typed directly (`UTC`) have no place, so they show the plain sun.
+  - **Moon:** the phase is the time since a known new moon (6 Jan 2000, 18:14 UTC) divided by the 29.53-day lunar month. The lit part is drawn as half a circle (the side facing the sun) plus half an ellipse (the line between light and dark), whose width is `cos(phase × 2π) × r`. The phase is the same everywhere on Earth, so all night-time clocks show the same moon.
+  - Sun or moon switches at 6 am and 6 pm, the same line as the shaded half and the dark dial.
+
 ### Now playing (`media.rs`, `nowplaying.js`)
 
 - Uses the **Global System Media Transport Controls** (the same API as the Windows volume-key media flyout).
 - WinRT calls block, so the commands run inside `spawn_blocking` to keep the main thread free.
 - Apps report playback position only occasionally, so Rust adds the time elapsed since `LastUpdatedTime`, and JS interpolates between polls (4× a second). Result: smooth progress.
-- JS polls every 1.5 s and fetches album art only when the track changes. The art is shown as-is.
+- JS polls every 1.5 s and fetches album art only when the track changes. The art is shown as-is (no theme tint).
+- **Which app:** Windows gives each media session an app ID (`Spotify.exe`, `Chrome`, `MSEdge`...). `sourceOf()` turns it into a name: Spotify, YouTube for browsers and the installed YouTube / YouTube Music apps, otherwise a cleaned-up app name.
+- **Full song name:** the title wraps instead of being cut off; `fitTitle()` starts at 17px and steps the font down until it fits its box. The full name is also the hover tooltip.
 - **Two views,** picked by `nowPlayingStyle` in `config.js`. The data side (polling, controls, seeking) is shared; each view only draws.
   - `"turntable"` (default, 380×230 before scaling): the album art is the record's centre label. The record spins (CSS, 33⅓ rpm) only while playing. The tonearm is parked when paused, lowers onto the record when playing, and creeps from the outer groove (18°) towards the label (35°) as the song goes on. A progress arc runs around the top of the record, with a dot at the current position. The arm angles and arc are worked out in the SVG's own 332×190 units (`ARM` and `RING` in `nowplaying.js`), and the CSS positions match them.
   - `"card"` (the original compact design, 380×150): square album art, a progress bar, and the controls.
@@ -223,7 +244,9 @@ Two ways in, one function: the tray's **Lock widgets** item and the global short
 - Paper texture: an SVG noise layer with `mix-blend-mode: overlay`, which works on both light and dark cards.
 - Motion respects Windows' **Animation effects** setting (`prefers-reduced-motion`): when it's off, the record doesn't spin, the tonearm jumps instead of swinging, the toast fades without moving, and calendar months don't slide.
 
-**Typography:** Jost only. Weight 200 with tabular digits for the big numbers (so the clock doesn't shift as it ticks); 300 for the month name; 500–700 for titles and labels.
+**Typography:** Jost only. Weight 200 with tabular digits for the big numbers (so they don't shift as they change); 300 for the month name; 500–700 for titles and labels.
+
+**Clock dials:** only theme colours. Day dials use the lighter of paper/ink, night dials the darker, with the other one for the hands; ink B for the second hand and centre dot.
 
 ---
 
@@ -234,7 +257,9 @@ Two ways in, one function: the tray's **Lock widgets** item and the global short
 | Setting | Current | Meaning |
 |---|---|---|
 | `scale` | `0.78` | Widget size (1 = original) |
-| `hour12` | `false` | 12h or 24h clock |
+| `hour12` | `false` | 12h or 24h times in the calendar |
+| `clockSeconds` | `true` | Second hand on the clocks |
+| `clockStyle` | `"sun"` | Clock face: `classic`, `numerals`, `rings`, `sun`, `bezel` or `digital` |
 | `weekStartsOn` | `1` | 0 = Sunday, 1 = Monday |
 | `temperatureUnit` | `"celsius"` | or `"fahrenheit"` |
 | `upcomingEvents` | `3` | Events listed under the calendar |
@@ -244,7 +269,7 @@ Two ways in, one function: the tray's **Lock widgets** item and the global short
 
 **`%APPDATA%\com.deskwidgets.app\settings.json`** (written by the app): `locked` and `hidden` (list of hidden widget labels).
 
-**`src-tauri/tauri.conf.json`:** window labels, default positions, and base window sizes (already multiplied by `scale`). Default positions only matter on first run (after that, the saved positions win), but if a widget's height changes, check the one below it still clears it. App identifier: `com.deskwidgets.app`. Don't change the identifier; it decides the AppData folder where the Google files live.
+**`src-tauri/tauri.conf.json`:** window labels, default positions, and base window sizes (already multiplied by `scale`; the clock's is the one-clock size, and it resizes itself from there). Default positions only matter on first run (after that, the saved positions win), but if a widget's height changes, check the one below it still clears it. App identifier: `com.deskwidgets.app`. Don't change the identifier; it decides the AppData folder where the Google files live.
 
 ---
 
@@ -256,9 +281,9 @@ Two ways in, one function: the tray's **Lock widgets** item and the global short
 | Google sign-in token | `%APPDATA%\com.deskwidgets.app\google_token.json` | **Never** |
 | Settings (lock, hidden widgets) | `%APPDATA%\com.deskwidgets.app\settings.json` | No |
 | Widget positions | Saved by the window-state plugin in the app's config folder | No |
-| Weather city, theme cache, last calendar used | WebView `localStorage` | No |
+| Weather city, added clocks, theme cache, last calendar used | WebView `localStorage` | No |
 
-- Dev mode and the installed app have **separate `localStorage`**, so the weather city has to be entered once in each. Files in `%APPDATA%` are shared.
+- Dev mode and the installed app have **separate `localStorage`**, so the weather city and added clocks have to be entered once in each. Files in `%APPDATA%` are shared.
 - `.gitignore` blocks `node_modules/`, `src-tauri/target/`, `src-tauri/gen/`, `google_client.json`, `google_token.json`, `client_secret*.json`, `.env*`, `settings.json`, and editor clutter.
 
 ---
@@ -308,7 +333,7 @@ cargo fmt              # (inside src-tauri) format Rust code
 - **Frontend changes:** click a widget and press `Ctrl+R` to reload it.
 - **Rust changes:** rebuild automatically in dev mode.
 - **Dev tools:** right-click a widget → **Inspect** (dev mode only).
-- **Design in a normal browser:** serve `src/` with any static server and open `index.html?w=clock` (or `nowplaying`, `weather`, `calendar`). `api.js` fills in sample data. Add `&wp=image.jpg` to test the wallpaper theme with any image.
+- **Design in a normal browser:** serve `src/` with any static server and open `index.html?w=clock` (or `nowplaying`, `weather`, `calendar`). `api.js` fills in sample data. Add `&wp=image.jpg` to test the wallpaper theme with any image, and `&zones=Asia/Tokyo,Europe/London` to preview extra clocks.
 - **README screenshot (`preview.png`):** the four browser previews side by side in iframes at their real window sizes, on `#3a405c`, captured with headless Chrome at 2× (`--force-device-scale-factor=2`). Uses sample data, so no real events end up in it. Add `--force-prefers-reduced-motion` so the tonearm is already on the record when the shot is taken, and set a weather city in `localStorage` first.
 
 **Prerequisites on a new PC:** Visual Studio Build Tools with **Desktop development with C++**, Rust (`rustup`), and Node.js LTS.
@@ -408,10 +433,14 @@ Each person's calendar data goes directly between their PC and Google; nobody el
 - **Windows only:** the media API, Win+D fix and wallpaper path are Windows-specific.
 - On the current month, the list looks 45 days ahead. Events further out show up (in the grid and the list) once you navigate to their month.
 - Seeking only works in apps that let Windows move their playback position; in others the arc just shows progress.
+- Windows reports the app that's playing, not the website, so anything playing in a browser is labelled **YouTube**.
+- The sun face switches between sun and moon at a fixed 6 am / 6 pm, not each city's real sunrise and sunset. The moon is drawn as seen from the northern hemisphere.
 - Changing the lock shortcut means editing `lib.rs` and rebuilding (there's no settings window).
 - Hidden widgets keep running in the background (their windows are hidden, not closed).
 - When the wallpaper changes, each of the 4 widgets asks Rust separately, so Rust decodes it 4 times (about 16 ms each). Caching the result in Rust would make it once.
 - The installer is **unsigned**, so SmartScreen shows a warning on install.
+- Adding a clock by place name needs internet (zone IDs like `UTC` or `Asia/Tokyo` don't). Once added, clocks work offline.
+- The clock widget grows to the right (and down after 4 clocks), so at the default positions it can end up over the calendar; drag one of them.
 
 ---
 
@@ -438,6 +467,7 @@ Options if you want it lower:
 - **Brand verification:** skipped; the app is for personal use.
 - **Code-signing:** skipped. It only removes the SmartScreen warning for people downloading the installer, which doesn't matter for personal use. Revisit only if the app is ever distributed widely.
 - **Typography:** went from Archivo with an off-register two-ink effect on the big numbers to Jost, set thin in a single colour, with the inks kept for small accents.
+- **Clock:** digits replaced by analog dials so it can also be a world clock. Light/dark dials stand in for am/pm.
 - **Now playing:** the turntable became the default; the original card design is kept as an option (`nowPlayingStyle: "card"`).
 - **Calendar header on two lines:** "September 2027" plus five controls didn't fit in one line of a 250 px-wide card.
 - **Shared functions for shared actions:** the tray item and the shortcut both call `toggle_lock()`; `events()` and `calendars()` both use `calendar_list()`.
@@ -455,6 +485,9 @@ Options if you want it lower:
 | 2026-09-29 | v0.2.0: first public release on GitHub Releases; README leads with Download |
 | 2026-10-06 | Calendar list follows the month on screen |
 | 2026-10-07 | v0.3.0: minimal typography (Jost), turntable now-playing with progress arc and seeking, weather's default position no longer overlaps now playing; released on GitHub with a new README screenshot |
+| 2026-10-07 | v0.3.1: real album cover on the record (no theme tint) |
+| 2026-10-09 | Analog clock with extra clocks for other cities and countries (add with +, remove with ×) |
+| 2026-10-09 | Six clock faces; 24-hour sun face with each city's weather by day and the real moon phase at night. Now playing shows Spotify/YouTube and the full song name |
 
 ## 20. Ideas for later
 

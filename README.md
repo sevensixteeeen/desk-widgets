@@ -1,6 +1,6 @@
 # Desk Widgets
 
-Desktop widgets for Windows: a clock, now playing, weather, and Google Calendar, themed from your wallpaper.
+Desktop widgets for Windows: an analog world clock, now playing, weather, and Google Calendar, themed from your wallpaper.
 
 ![Preview](preview.png)
 
@@ -20,7 +20,8 @@ Desktop widgets for Windows: a clock, now playing, weather, and Google Calendar,
 
 ## Features
 
-- **Now playing:** a turntable for whatever is playing in Spotify, YouTube in Chrome, or any app that reports media to Windows. The record spins while music plays, the album art is its centre label, and the tonearm moves inward as the song goes on. Play/pause/skip, and click or drag the arc around the record to jump anywhere in the song (in apps that let Windows control playback position). No Spotify login needed.
+- **Clock:** a dial for your time and any cities or countries you add, light by day and dark by night, with how far ahead or behind each one is. The default 24-hour face shows each city's weather by day (sun, cloud, rain...) and tonight's moon, in its real phase, at night. Five other faces to choose from in `config.js`.
+- **Now playing:** a turntable for whatever is playing in Spotify, YouTube in Chrome, or any app that reports media to Windows. The record spins while music plays, the album cover is its centre label, and the tonearm moves inward as the song goes on. Shows whether it's playing from Spotify or YouTube, and the full song name. Play/pause/skip, and click or drag the arc around the record to jump anywhere in the song (in apps that let Windows control playback position). No Spotify login needed.
 - **Weather:** current conditions and the next 6 hours, from [Open-Meteo](https://open-meteo.com) (no API key).
 - **Calendar:** month view (browse with ‹ › or the mouse wheel) with events from every calendar ticked in your Google Calendar. The list under it follows the month on screen: upcoming events for this month, that month's events when you browse to another. Click a day or **+** to add an event to whichever calendar you choose.
 - **Themed from your wallpaper:** colours are pulled from your current wallpaper and update when you change it.
@@ -35,6 +36,7 @@ Desktop widgets for Windows: a clock, now playing, weather, and Google Calendar,
 - **Hide a widget:** tray → **Show widgets** → untick it.
 - **Jump to a point in the song:** click or drag the arc around the record.
 - **Change the weather city:** click the city name.
+- **Add a clock for another country:** click **+** on the clock and type a city or country (e.g. Tokyo, Dubai, Japan). Point at a clock and click **×** to remove it.
 - **Quit:** tray → **Quit widgets**.
 
 ## Connect Google Calendar (optional)
@@ -60,7 +62,7 @@ Everything stays on your PC. The Google client file and sign-in token live in `%
 
 ```
 src/                   Frontend (plain HTML/CSS/JS, no bundler)
-  config.js            Your settings: size, 12/24h, week start, °C/°F, now-playing style
+  config.js            Your settings: size, 12/24h, week start, °C/°F, clock face, now-playing style
   main.js              Picks the widget for each window; size, drag and lock
   theme.js             Turns the wallpaper into a colour palette
   api.js               Talks to Rust, or returns sample data in a normal browser

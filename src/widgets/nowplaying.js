@@ -8,7 +8,25 @@ const icons = {
   next: '<svg viewBox="0 0 16 16"><path d="M11 2h2v12h-2zM2 2v12l8-6z"/></svg>',
 };
 
-const EMPTY_HINT = "Play something in Spotify and it shows up here.";
+const EMPTY_HINT = "Play something in Spotify or YouTube and it shows up here.";
+
+/**
+ * Which app is playing, from the ID Windows gives us ("Spotify.exe", "Chrome", "MSEdge"...).
+ * Returns [name, css class for the coloured dot].
+ * Windows only knows the APP, not the website, so anything playing in a browser shows as YouTube.
+ */
+function sourceOf(app = "") {
+  const a = app.toLowerCase();
+  if (a.includes("spotify")) return ["Spotify", "is-spotify"];
+  if (a.includes("cinhimbnkkaeohfgghhklpknlkffjgod")) return ["YouTube Music", "is-youtube"]; // installed YouTube Music app
+  if (a.includes("agimnkijcaahngcdmfeangaknmldooml")) return ["YouTube", "is-youtube"]; // installed YouTube app
+  if (/chrome|msedge|firefox|brave|opera|vivaldi/.test(a)) return ["YouTube", "is-youtube"];
+  // Anything else: boil the ID down to a name.
+  // "C:\\Apps\\vlc.exe" -> "vlc", "Microsoft.ZuneMusic_8wekyb3d8bbwe!Microsoft.ZuneMusic" -> "ZuneMusic"
+  const name = app.split("!")[0].split(/[\\/]/).pop().replace(/\.exe$/i, "").split("_")[0].split(".").pop();
+  const known = { ZuneMusic: "Media Player", ZuneVideo: "Films & TV", AppleMusicWin: "Apple Music", vlc: "VLC" };
+  return [known[name] || name, "is-other"];
+}
 
 const fmt = (ms) => {
   const s = Math.max(0, Math.floor(ms / 1000));
@@ -37,6 +55,7 @@ export function mountNowPlaying(root) {
   let receivedAt = 0; // when we got it, to keep things moving between polls
   let trackKey = "";
 
+
   async function poll() {
     try {
       track = await invoke("media_now_playing");
@@ -45,7 +64,7 @@ export function mountNowPlaying(root) {
     }
     receivedAt = performance.now();
 
-    const key = track ? `${track.title}|${track.artist}` : "";
+    const key = track ? `${track.app}|${track.title}|${track.artist}` : "";
     if (key !== trackKey) {
       trackKey = key;
       view.setTrack(track);
@@ -157,6 +176,11 @@ function turntableView(root, seek) {
       <div class="tt-side">
         <p class="tt-title">Nothing playing</p>
         <p class="tt-artist">${EMPTY_HINT}</p>
+        <!-- Fills the gap above the time: which app it's coming from, with bars that move while it plays. -->
+        <div class="tt-source">
+          <span class="tt-eq" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+          <span class="tt-source-text"><small>Playing on</small><b></b></span>
+        </div>
         <p class="tt-time"></p>
         <div class="tt-controls">${controlsHtml}</div>
       </div>
@@ -167,7 +191,23 @@ function turntableView(root, seek) {
     tt: $(".tt"), img: $(".tt-label img"), glyph: $(".tt-label .glyph"), title: $(".tt-title"),
     artist: $(".tt-artist"), time: $(".tt-time"), arm: $(".tt-arm-swing"), toggle: $('[data-action="toggle"]'),
     played: $(".tt-ring-played"), dot: $(".tt-ring-dot"), ring: $(".tt-ring"), hit: $(".tt-ring-hit"),
+    source: $(".tt-source"), sourceName: $(".tt-source b"), sourceState: $(".tt-source small"),
   };
+
+  /** Shows the whole song name: starts big and steps the font down until it fits its box. */
+  // Step 1: shrink from 17px to 13px. Step 2, for very long names: give the title more room
+  // (the app label below drops to one line) and keep shrinking to 11px.
+  function fitTitle() {
+    // A few px of slack: tall letters poke out of their line a little even when the text fits.
+    const overflows = () => el.title.scrollHeight > el.title.clientHeight + 3;
+    let size = 17;
+    el.tt.classList.remove("is-long");
+    el.title.style.fontSize = `${size}px`;
+    while (overflows() && size > 13) el.title.style.fontSize = `${--size}px`;
+    if (!overflows()) return;
+    el.tt.classList.add("is-long");
+    while (overflows() && size > 11) el.title.style.fontSize = `${--size}px`;
+  }
   el.arm.style.transformOrigin = `${p.x}px ${p.y}px`; // swing around the pivot
 
   let last = { pos: 0, duration: 0, playing: false }; // latest values from the data side
@@ -188,8 +228,9 @@ function turntableView(root, seek) {
   function draw() {
     const { duration, playing } = last;
     const pos = dragging === null ? last.pos : dragging * duration;
-    // The record spins only while playing (CSS pauses the animation otherwise).
+    // The record (and the bars by the app name) move only while playing; CSS pauses them otherwise.
     el.tt.classList.toggle("is-playing", playing);
+    el.sourceState.textContent = playing ? "Playing on" : "Paused on";
 
     // The arm: parked when paused, on the record while playing, and it creeps
     // inward as the song goes on, so it doubles as the progress bar.
@@ -246,8 +287,14 @@ function turntableView(root, seek) {
       el.tt.classList.toggle("is-empty", !track);
       el.title.textContent = track?.title || "Nothing playing";
       el.artist.textContent = track ? track.artist || track.album || "" : EMPTY_HINT;
-      el.title.title = el.title.textContent; // full text on hover when it's cut off
+      el.title.title = el.title.textContent; // full text on hover, for the rare name too long even at the smallest size
+      const [name, kind] = sourceOf(track?.app);
+      el.sourceName.textContent = name;
+      el.source.className = `tt-source ${kind}`;
+      fitTitle();
     },
+
+    fitText: fitTitle,
 
     setArt(src) {
       el.img.hidden = !src;
@@ -269,6 +316,7 @@ function cardView(root, seek) {
     <div class="np is-empty">
       <div class="np-art"><img alt="" hidden><span class="glyph">♪</span></div>
       <div class="np-body">
+        <p class="np-source"><i></i><span></span></p>
         <p class="np-title">Nothing playing</p>
         <p class="np-artist">${EMPTY_HINT}</p>
         <div class="np-bar" data-no-drag><span></span></div>
@@ -303,6 +351,10 @@ function cardView(root, seek) {
       el.np.classList.toggle("is-empty", !track);
       el.title.textContent = track?.title || "Nothing playing";
       el.artist.textContent = track ? track.artist || track.album || "" : EMPTY_HINT;
+      el.title.title = el.title.textContent;
+      const [name, kind] = sourceOf(track?.app);
+      $(".np-source span").textContent = name;
+      $(".np-source").className = `np-source ${kind}`;
     },
 
     setArt(src) {

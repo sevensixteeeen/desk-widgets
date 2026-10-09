@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Permissions for the widget windows",
   "windows": ["clock", "nowplaying", "calendar", "weather"],
-  "permissions": ["core:default", "core:window:allow-start-dragging", "core:window:allow-set-size"]
+  "permissions": ["core:default", "core:window:allow-start-dragging", "core:window:allow-set-size", "core:window:allow-set-position"]
 }

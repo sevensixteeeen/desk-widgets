@@ -7,8 +7,8 @@ import { mountWeather } from "./widgets/weather.js";
 import { mountCalendar } from "./widgets/calendar.js";
 
 const widgets = {
-  clock: { mount: mountClock, size: [380, 190] },
-  nowplaying: { mount: mountNowPlaying, size: config.nowPlayingStyle === "card" ? [380, 150] : [380, 230] },
+  clock: { mount: mountClock }, // no size: it grows with the clocks you add
+  nowplaying: { mount: mountNowPlaying, size: config.nowPlayingStyle === "card" ? [380, 150] : [380, 230] }, // fixed size
   weather: { mount: mountWeather, size: [380, 220] },
   calendar: { mount: mountCalendar, size: [320, 490] },
 };
@@ -16,10 +16,9 @@ const widget = widgets[widgetName];
 
 // ---- Size ----
 // Widgets are designed at full size; `zoom` shrinks everything inside evenly,
-// and the window is shrunk by the same factor so the card still fills it.
+// and resizeWindow shrinks the window by the same factor so the card still fills it.
 document.documentElement.style.zoom = config.scale;
-const [w, h] = widget.size;
-resizeWindow(Math.round(w * config.scale), Math.round(h * config.scale));
+if (widget.size) resizeWindow(...widget.size);
 
 // ---- Theme from wallpaper ----
 startTheme();

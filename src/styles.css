@@ -120,10 +120,93 @@ button:focus-visible, input:focus-visible {
 .note { font-size: 13px; line-height: 1.45; color: var(--muted); }
 
 /* ---------- Clock ---------- */
-.clock { display: flex; flex-direction: column; justify-content: center; height: 100%; gap: 14px; }
-.clock .print { font-size: 104px; }
-.clock .period { font-size: 18px; font-weight: 600; margin-left: 10px; color: var(--ink); }
-.clock-date { font-size: 17px; font-weight: 500; }
+/* Analog dials, four to a row; the window grows to fit them. Sizes match CELL and GAP in clock.js.
+   Day dials are light and night dials dark in either theme, so you can tell 3 am from 3 pm. */
+.clock {
+  --day-face: color-mix(in srgb, var(--paper-solid) 60%, white);
+  --day-hand: var(--ink);
+  --night-face: var(--ink);
+  --night-hand: var(--paper-solid);
+}
+:root[data-theme="dark"] .clock {
+  --day-face: var(--ink);
+  --day-hand: var(--paper-solid);
+  --night-face: color-mix(in srgb, var(--paper-solid) 65%, black);
+  --night-hand: var(--ink);
+}
+.clock-grid { display: grid; grid-template-columns: repeat(var(--cols), 132px); column-gap: 18px; row-gap: 14px; }
+.clock-zone { --face: var(--day-face); --hand: var(--day-hand); position: relative; height: 164px; display: flex; flex-direction: column; align-items: center; }
+.clock-zone.is-night { --face: var(--night-face); --hand: var(--night-hand); }
+
+.dial { width: 120px; height: 120px; overflow: visible; }
+.dial line { stroke: var(--hand); stroke-linecap: round; }
+.dial-face { fill: var(--face); stroke: var(--rule); stroke-width: 1; }
+.dial-tick { stroke-width: 1.5; opacity: 0.35; }
+.dial-tick.is-major { stroke-width: 2.5; opacity: 0.75; }
+.dial-hour { stroke-width: 4.5; }
+.dial-minute { stroke-width: 3; }
+.dial .dial-second { stroke: var(--accent-b); stroke-width: 1.2; }
+.dial-cap { fill: var(--accent-b); }
+
+/* Other faces (dials.js). Text inside the SVG uses the card's font, centred on its x/y. */
+.dial text { font-family: inherit; text-anchor: middle; dominant-baseline: central; fill: var(--hand); }
+.dial-num { font-size: 10px; font-weight: 300; opacity: 0.7; }
+.dial-num.is-major { font-size: 12px; font-weight: 400; opacity: 1; }
+.dial-digits { font-size: 17px; font-weight: 300; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+
+.ring-track, .ring-fill { fill: none; stroke-linecap: round; }
+.ring-track { stroke: var(--hand); opacity: 0.12; }
+.ring-outer { stroke-width: 3; }
+.ring-inner { stroke-width: 6; }
+.ring-minute { stroke: var(--accent-a); }
+.ring-hour { stroke: var(--hand); }
+.ring-second { fill: var(--accent-b); }
+
+.sun-night { fill: var(--hand); opacity: 0.1; }
+.sun-label { font-size: 8px; font-weight: 500; opacity: 0.55; }
+.sun-hand > line { stroke-width: 2; }
+.dial .sun-digits { font-size: 10px; font-weight: 400; opacity: 0.7; }
+
+/* The icon on the hand's tip (sky.js): a face-coloured disc behind it keeps the ticks out. */
+.sky-back { fill: var(--face); }
+.dial .sky-sun line { stroke: #f5b83d; stroke-width: 1.3; }
+.sky-sun circle { fill: #f5b83d; }
+.sky-cloud { fill: color-mix(in srgb, var(--hand) 45%, var(--face)); }
+.dial .sky-rain line { stroke: var(--accent-a); stroke-width: 1.2; }
+.sky-snow circle { fill: var(--accent-a); }
+.sky-bolt { fill: #f5b83d; }
+.dial .sky-fog line { stroke: color-mix(in srgb, var(--hand) 55%, var(--face)); stroke-width: 1.5; }
+.sky-moon-outline { fill: none; stroke: var(--hand); stroke-width: 1; opacity: 0.6; }
+.sky-moon-lit { fill: #f3ecd2; }
+
+.bezel-notch { fill: var(--accent-b); }
+.dial .bezel-minutes { font-size: 24px; font-weight: 200; }
+
+.digital-dot { fill: var(--hand); opacity: 0.25; }
+.digital-dot.is-major { opacity: 0.6; }
+.digital-runner { fill: var(--accent-a); }
+.dial .digital-time { font-size: 21px; font-weight: 200; }
+
+.clock-name, .clock-day { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.clock-name { margin-top: 8px; font-size: 15px; font-weight: 600; }
+.clock-day { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* Add sits in the card's corner; remove shows on the top-left of a dial when you point at it. */
+.clock-add {
+  position: absolute; top: 8px; right: 8px; width: 26px; height: 26px;
+  display: grid; place-items: center; border-radius: 50%; color: var(--muted);
+}
+.clock-add:hover { background: var(--accent-a); color: var(--paper-solid); }
+.clock-remove {
+  position: absolute; left: 0; top: 0; z-index: 1; width: 22px; height: 22px;
+  display: grid; place-items: center; border-radius: 50%;
+  background: var(--ink); color: var(--paper-solid); opacity: 0;
+}
+.clock-zone:hover .clock-remove, .clock-remove:focus-visible { opacity: 1; }
+.clock-add svg { width: 13px; height: 13px; fill: currentColor; }
+.clock-remove svg { width: 10px; height: 10px; fill: currentColor; }
+.clock-form-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 8px; }
+.clock-form .note { font-size: 12px; }
 
 /* ---------- Now playing ---------- */
 .np { display: grid; grid-template-columns: 106px 1fr; gap: 18px; height: 100%; align-items: center; }
@@ -230,11 +313,45 @@ button:focus-visible, input:focus-visible {
   position: absolute; left: 218px; right: 0; top: 0; bottom: 0;
   display: flex; flex-direction: column; gap: 3px; min-width: 0; padding-top: 4px;
 }
-.tt-title, .tt-artist { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.tt-title { font-size: 16px; font-weight: 700; }
-.tt-artist { font-size: 13px; color: var(--muted); }
-.tt.is-empty .tt-title, .tt.is-empty .tt-artist { white-space: normal; } /* let the empty-state text wrap */
-.tt-time { margin-top: auto; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+/* The song name wraps instead of being cut off; nowplaying.js shrinks the font until it fits this box. */
+.tt-title { font-size: 17px; font-weight: 700; line-height: 1.2; max-height: 62px; overflow: hidden; overflow-wrap: break-word; flex-shrink: 0; }
+.tt-artist {
+  font-size: 13px; color: var(--muted); overflow: hidden;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; /* at most two lines */
+}
+
+/* Which app it's playing from, in the space between the artist and the time.
+   --brand colours the bars: Spotify green, YouTube red, otherwise the theme's accent. */
+.tt-source { --brand: var(--accent-a); display: flex; align-items: center; gap: 10px; margin: auto 0; flex-shrink: 0; }
+.tt-source.is-spotify, .np-source.is-spotify { --brand: #1ed760; }
+.tt-source.is-youtube, .np-source.is-youtube { --brand: #ff3b3b; }
+.tt-source-text { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
+.tt-source small { font-size: 9px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+/* Very long song names: the title gets two more lines and the label shrinks to just the app name. */
+.tt.is-long .tt-title { max-height: 82px; }
+.tt.is-long .tt-source small { display: none; }
+.tt.is-long .tt-eq { height: 12px; }
+.tt.is-long .tt-source b { font-size: 13px; }
+.tt-source b { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Four bars bouncing out of step, like a level meter. They rest low while paused. */
+.tt-eq { display: flex; align-items: flex-end; gap: 2px; height: 18px; flex-shrink: 0; }
+.tt-eq i { width: 3px; height: 100%; border-radius: 1.5px; background: var(--brand); transform-origin: bottom; transform: scaleY(0.25); }
+.is-playing .tt-eq i { animation: eq 0.9s ease-in-out infinite alternate; }
+.tt-eq i:nth-child(2) { animation-delay: -0.45s; animation-duration: 0.7s; }
+.tt-eq i:nth-child(3) { animation-delay: -0.2s; animation-duration: 1.1s; }
+.tt-eq i:nth-child(4) { animation-delay: -0.6s; animation-duration: 0.8s; }
+@keyframes eq { from { transform: scaleY(0.2); } to { transform: scaleY(1); } }
+@media (prefers-reduced-motion: reduce) { .is-playing .tt-eq i { animation: none; transform: scaleY(0.6); } }
+
+/* The compact card keeps a small label with a dot. */
+.np-source { display: flex; align-items: center; gap: 6px; font-size: 10px; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase; color: var(--muted); }
+.np-source i { width: 7px; height: 7px; border-radius: 50%; background: var(--accent-a); }
+.np-source.is-spotify i { background: #1ed760; }
+.np-source.is-youtube i { background: #ff3b3b; }
+.tt.is-empty .tt-source, .np.is-empty .np-source { display: none; }
+.tt.is-empty .tt-time { margin-top: auto; } /* nothing above it to push it down */
+.tt-time { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 
 .tt-controls { display: flex; align-items: center; gap: 4px; margin-top: 6px; }
 .tt-controls button { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; color: var(--accent-a); }
@@ -265,9 +382,9 @@ button:focus-visible, input:focus-visible {
 .wx-hour i { display: block; width: 100%; max-width: 30px; border-radius: 3px 3px 0 0; background: var(--accent-b); }
 .wx-hour small { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 
-.wx-form { display: flex; flex-direction: column; justify-content: center; gap: 10px; height: 100%; }
-.wx-form label { font-size: 15px; font-weight: 600; }
-.wx-form input {
+.wx-form, .clock-form { display: flex; flex-direction: column; justify-content: center; gap: 10px; height: 100%; }
+.wx-form label, .clock-form label { font-size: 15px; font-weight: 600; }
+.wx-form input, .clock-form input {
   font: inherit; font-size: 16px; padding: 9px 12px;
   border: 1.5px solid var(--rule); border-radius: 8px; background: transparent; color: var(--ink);
 }
