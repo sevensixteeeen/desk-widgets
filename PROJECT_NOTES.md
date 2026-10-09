@@ -489,6 +489,7 @@ Options if you want it lower:
 | 2026-10-07 | v0.3.1: real album cover on the record (no theme tint) |
 | 2026-10-09 | Analog clock with extra clocks for other cities and countries (add with +, remove with ×) |
 | 2026-10-09 | Six clock faces; 24-hour sun face with each city's weather by day and the real moon phase at night. Now playing shows Spotify/YouTube and the full song name |
+| 2026-10-09 | v0.4.0: world clock, clock faces, weather and moon, now-playing source; released on GitHub with a new README screenshot |
 
 ## 20. Ideas for later
 
