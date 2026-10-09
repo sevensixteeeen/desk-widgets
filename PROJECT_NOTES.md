@@ -504,6 +504,7 @@ Options if you want it lower:
 | 2026-10-09 | Six clock faces; 24-hour sun face with each city's weather by day and the real moon phase at night. Now playing shows Spotify/YouTube and the full song name |
 | 2026-10-09 | v0.4.0: world clock, clock faces, weather and moon, now-playing source; released on GitHub with a new README screenshot |
 | 2026-10-09 | Resize any widget: grip in the bottom-right corner or Ctrl + mouse wheel, saved per widget, double-click for default |
+| 2026-10-09 | v0.5.0: resize any widget; released on GitHub |
 
 ## 20. Ideas for later
 
