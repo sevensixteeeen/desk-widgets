@@ -25,19 +25,20 @@ Everything important about how this project works, why it's built this way, and 
 - Widgets sit **behind all apps** on the desktop and **survive Win+D** (Show desktop).
 - **Colours come from your wallpaper** and update automatically when the wallpaper changes.
 - **World clock:** one dial per place, light by day and dark by night. Click **+** to add a city or country; point at a clock and click **×** to remove it.
-- **Six clock faces** (`clockStyle` in `config.js`): classic, numerals, rings, 24-hour sun (default), turning bezel, digital ring.
+- **Six clock faces** (Settings, or `clockStyle` in `config.js`): classic, numerals, rings, 24-hour sun (default), turning bezel, digital ring.
 - **24-hour sun face:** one turn is a whole day (noon at the top, midnight at the bottom, the night shaded from that city's real sunset to sunrise). The hand ends in that city's current **weather** by day (sun, partly cloudy, cloud, rain, snow, storm, fog) and **tonight's moon** at night, drawn in its real phase so it changes shape every night.
 - **Now playing** works with Spotify, YouTube in Chrome, or any app that reports media to Windows, with no login. It's drawn as a turntable: the record spins while playing, and the tonearm creeps inward as the song goes on. The real album cover is the record's label. It shows which app is playing (**Spotify** or **YouTube**), and the **full song name**: long names wrap and shrink to fit instead of being cut off.
 - **Seek:** click or drag the arc around the record to jump anywhere in the song (only in apps that let Windows move their playback position).
 - **Calendar** shows events from every calendar ticked in the Google Calendar sidebar (holidays, shared, work). Each event has a dot in its calendar's colour. The list under the grid follows the month on screen.
 - **Browse months** with ‹ ›, or the mouse wheel over the dates; **Today** jumps back.
 - **Add events** from the desktop: click a day or **+**, pick which calendar, and leave the time empty for an all-day event.
-- **Tray menu:** Show widgets (tick/untick each one), Lock widgets, Open at login, Quit.
+- **Settings window** (tray → Settings…): clock face with live previews of all six, second hand, 12/24-hour time, week start, °C/°F, now-playing style and the size of every widget. Changes apply right away.
+- **Tray menu:** Show widgets (tick/untick each one), Settings…, Lock widgets, Open at login, Quit.
 - **Ctrl+Alt+L** locks/unlocks dragging from anywhere, with a brief "Locked"/"Unlocked" message.
 - **Drag to move.** Positions are remembered.
 - **Everything you set up survives a restart** (sizes, added clocks, weather city, positions), even when Windows shuts down without the app being quit.
 - **Resize any widget:** drag the grip in its bottom-right corner, or Ctrl + mouse wheel over it. It scales evenly and remembers its size; double-click the grip for the default size. Locked widgets can't be resized.
-- **One setting sets the default size of everything** (`scale` in `config.js`).
+- **One setting sets the default size of everything** (Settings → Size, or `scale` in `config.js`).
 
 ---
 
@@ -72,6 +73,8 @@ Options considered and rejected: **Electron** (too heavy for always-on widgets) 
 │  4 windows (WebView2), all loading src/index.html                        │
 │   clock │ nowplaying │ weather │ calendar                                │
 │   main.js reads the window's *label* and mounts that widget              │
+│                                                                          │
+│  + settings window (WebView2), src/settings.html, made when you open it  │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -81,7 +84,7 @@ Options considered and rejected: **Electron** (too heavy for always-on widgets) 
 - **Rust → JS:** `app.emit("event-name", payload)`, received in JS with `onEvent(...)` (e.g. `lock-changed`).
 - **Rust only:** the tray menu, showing/hiding windows and the global shortcut never touch JS; Rust handles them directly.
 
-**One page, four windows:** every window loads the same `index.html`. `main.js` checks the window's label (set in `tauri.conf.json`) and runs the matching widget's `mount` function.
+**One page, four windows:** every widget window loads the same `index.html`. `main.js` checks the window's label (set in `tauri.conf.json`) and runs the matching widget's `mount` function. The settings window is the exception: it has its own `settings.html` and is only created when you open it from the tray.
 
 ---
 
@@ -91,11 +94,12 @@ Options considered and rejected: **Electron** (too heavy for always-on widgets) 
 desk-widgets/
 ├─ src/                         Frontend
 │  ├─ index.html                Shared page for every widget window
+│  ├─ settings.html             The settings window (+ settings.js, settings.css)
 │  ├─ main.js                   Widget selection, size (zoom), drag, lock
 │  ├─ resize.js                 Resize grip, Ctrl + wheel, each widget's saved size
 │  ├─ store.js                  Saved sizes, clocks, city, last calendar (widgets.json via Rust)
 │  ├─ api.js                    invoke / events / window helpers (resizeWindow applies scale) + sample data for browser preview
-│  ├─ config.js                 User settings (scale, 12/24h, second hand, week start, units, now-playing style)
+│  ├─ config.js                 Default settings; merges the settings window's choices on top at startup
 │  ├─ theme.js                  Wallpaper → colour palette
 │  ├─ styles.css                Design system and all widget styles
 │  ├─ fonts/jost.woff2          Bundled variable font (+ licence)
@@ -109,7 +113,7 @@ desk-widgets/
 ├─ src-tauri/
 │  ├─ tauri.conf.json           Window definitions, app identifier, bundle config
 │  ├─ Cargo.toml                Rust dependencies
-│  ├─ capabilities/default.json Which Tauri APIs the JS side may use
+│  ├─ capabilities/             Which Tauri APIs each window's JS may use (default.json: widgets, settings-window.json)
 │  ├─ icons/                    App icons (generated with `npx tauri icon`)
 │  └─ src/
 │     ├─ main.rs                Entry point (hides the console in release builds)
@@ -176,6 +180,14 @@ Two ways in, one function: the tray's **Lock widgets** item and the global short
 - Menu item ids are `show:<label>` (e.g. `show:weather`). The click handler uses `strip_prefix("show:")`, so one piece of code handles every widget.
 - `toggle_widget()` calls `window.hide()` / `window.show()` and keeps the list of hidden labels in `settings.json` (`"hidden": ["weather"]`), so the choice survives restarts.
 - Hidden widgets are hidden, not closed: their pages keep running in the background.
+
+### Settings window (`settings.js`, `config.js`, `lib.rs → open_settings`)
+
+- **Opening:** tray → **Settings…** calls `open_settings()`. If the window is open it's brought to the front; otherwise it's built from `settings.html` (500 × 720, not resizable) on an async task, because on Windows building a window inside an event handler can deadlock WebView2 (see `WebviewWindowBuilder::new` in Tauri's docs). It's an ordinary window: not pinned to the desktop, not in `tauri.conf.json`, and `makeRoom()` leaves it alone. The window-state plugin remembers where you put it. Its permissions are `capabilities/settings-window.json` (`core:default` only).
+- **Saving:** every choice goes into one key, `config` in `widgets.json`, holding only what differs from the defaults, so a default changed in a later version still reaches you. Back to all defaults removes the key. Saves wait 300 ms after the last change, so clicking through the faces reloads the clock once. Radio inputs carry their values as JSON, so `true`, `1` and `"card"` keep their types.
+- **Applying:** `config.js` reads `config` with a top-level `await` before any other module runs, and `withDefaults()` merges it over the defaults (unknown keys and wrong types are ignored). Several modules use settings the moment they load (`scale` in `api.js`, the second hand in `dials.js`, the face in `clock.js`), so a widget applies a change by reloading. Each widget lists the settings it reads (`uses` in `main.js`) and reloads only when one of those or `scale` changed. It starts listening for `store-changed` before reading the saved setup and then compares once more, so a change made while it was starting isn't missed. A new setting must be added to the right `uses` lists, or widgets won't pick it up until they restart.
+- **Face previews** are the real dials from `dials.js`, showing the local time and moving once a minute (second hands hidden).
+- **Theme:** `startTheme()`, like the widgets, so it follows the wallpaper. The page is opaque (`--paper-solid`) where the widgets are see-through (`settings.css`).
 
 ### Clock (`clock.js`)
 
@@ -281,9 +293,11 @@ Two ways in, one function: the tray's **Lock widgets** item and the global short
 
 ## 8. Configuration
 
-**`src/config.js`** (restart the app after changing):
+**Settings window** (tray → Settings…) changes everything below except `upcomingEvents`. Your choices are saved in `widgets.json` under `config`, only where they differ from the defaults.
 
-| Setting | Current | Meaning |
+**`src/config.js`** holds the defaults: what a new install starts with, and what **Reset to defaults** goes back to. Rebuild after changing them.
+
+| Setting | Default | Meaning |
 |---|---|---|
 | `scale` | `0.78` | Default widget size (1 = original). Each widget's own size (grip / Ctrl + wheel) multiplies it |
 | `hour12` | `false` | 12h or 24h times in the calendar |
@@ -291,10 +305,10 @@ Two ways in, one function: the tray's **Lock widgets** item and the global short
 | `clockStyle` | `"sun"` | Clock face: `classic`, `numerals`, `rings`, `sun`, `bezel` or `digital` |
 | `weekStartsOn` | `1` | 0 = Sunday, 1 = Monday |
 | `temperatureUnit` | `"celsius"` | or `"fahrenheit"` |
-| `upcomingEvents` | `3` | Events listed under the calendar |
+| `upcomingEvents` | `3` | Events listed under the calendar (not in Settings: more than 3 don't fit the card) |
 | `nowPlayingStyle` | `"turntable"` | or `"card"` for the original compact design (the window resizes itself to match) |
 
-**Lock shortcut:** `LOCK_SHORTCUT` at the top of the Lock section in `src-tauri/src/lib.rs` (default `"ctrl+alt+L"`). It's registered in Rust at startup, so it lives there rather than in `config.js`; change it, then rebuild. Also update the menu label text (`Some("Ctrl+Alt+L")`) to match.
+**Lock shortcut:** `LOCK_SHORTCUT` at the top of the Lock section in `src-tauri/src/lib.rs` (default `"ctrl+alt+L"`). It's registered in Rust at startup, so it lives there rather than in `config.js` or the settings window; change it, then rebuild. Also update the menu label text (`Some("Ctrl+Alt+L")`) to match.
 
 **`%APPDATA%\com.deskwidgets.app\settings.json`** (written by the app): `locked` and `hidden` (list of hidden widget labels).
 
@@ -310,11 +324,11 @@ Two ways in, one function: the tray's **Lock widgets** item and the global short
 | Google sign-in token | `%APPDATA%\com.deskwidgets.app\google_token.json` | **Never** |
 | Settings (lock, hidden widgets) | `%APPDATA%\com.deskwidgets.app\settings.json` | No |
 | Widget positions | `%APPDATA%\com.deskwidgets.app\.window-state.json` (window-state plugin) | No |
-| Weather city, added clocks, widget sizes, last calendar used | `%APPDATA%\com.deskwidgets.app\widgets.json` | No |
+| Weather city, added clocks, widget sizes, last calendar used, settings-window choices (`config`) | `%APPDATA%\com.deskwidgets.app\widgets.json` | No |
 | Theme cache | WebView `localStorage` | No |
 
 - Dev mode and the installed app share the files in `%APPDATA%`, so they show the same clocks, sizes and city. Only the theme cache is separate (`localStorage` is per origin: `127.0.0.1:1430` in dev, `tauri.localhost` installed).
-- `.gitignore` blocks `node_modules/`, `src-tauri/target/`, `src-tauri/gen/`, `google_client.json`, `google_token.json`, `client_secret*.json`, `.env*`, `settings.json`, and editor clutter.
+- `.gitignore` blocks `node_modules/`, `src-tauri/target/`, `src-tauri/gen/`, `google_client.json`, `google_token.json`, `client_secret*.json`, `.env*`, `settings.json`, and editor clutter. That `settings.json` rule matches the name in any folder, which is why the settings window's capability file is called `settings-window.json`.
 
 ---
 
@@ -468,7 +482,9 @@ Each person's calendar data goes directly between their PC and Google; nobody el
 - Windows reports the app that's playing, not the website, so anything playing in a browser is labelled **YouTube**.
 - The moon is drawn as seen from the northern hemisphere.
 - The 24-hour face uses 6 am / 6 pm until the first weather fetch, and always for zone IDs typed directly (`UTC`), which have no place to get a sunrise for.
-- Changing the lock shortcut means editing `lib.rs` and rebuilding (there's no settings window).
+- Changing the lock shortcut means editing `lib.rs` and rebuilding (it isn't in the settings window).
+- A settings change reloads the widgets it affects, so they redraw once (and the calendar asks Google again if it's one of them).
+- A bigger size in Settings can make widgets overlap; nothing moves them apart, so drag them.
 - Hidden widgets keep running in the background (their windows are hidden, not closed).
 - A widget saved at a non-default size jumps to it a moment after startup: Rust shows the window at its `tauri.conf.json` size before the page loads and restores the size.
 - Widgets only scale evenly; you can't make one wider without making it taller.
@@ -506,6 +522,7 @@ Options if you want it lower:
 - **Now playing:** the turntable became the default; the original card design is kept as an option (`nowPlayingStyle: "card"`).
 - **Calendar header on two lines:** "September 2027" plus five controls didn't fit in one line of a 250 px-wide card.
 - **Shared functions for shared actions:** the tray item and the shortcut both call `toggle_lock()`; `events()` and `calendars()` both use `calendar_list()`.
+- **Settings apply by reloading** the widgets they affect, rather than redrawing in place: several modules read settings as they load, and a reload can't leave a widget half on the old values.
 - **Learning approach:** later features were built partly by hand (typing the change, then a line-by-line review) to learn Rust and Tauri, not just copy code.
 
 ---
@@ -531,6 +548,7 @@ Options if you want it lower:
 | 2026-10-20 | Widgets no longer shove each other out of place when the clock grows; default layout: calendar top-left, clock beside it, now playing below the clock |
 | 2026-10-20 | 24-hour sun face follows each city's real sunrise and sunset: the shaded night, sun or moon, and the dark dial |
 | 2026-10-20 | v0.5.2: widgets stay where you put them, real sunrise and sunset on the 24-hour face; released on GitHub |
+| 2026-10-20 | Settings window (tray → Settings…): clock face with live previews, second hand, 12/24-hour, week start, °C/°F, now-playing style and widget size; changes apply right away |
 
 ## 20. Ideas for later
 
@@ -546,7 +564,7 @@ Not planned right now; these notes are here so the thinking isn't lost.
 
 **Blockers before selling:**
 
-- A settings window (no editing `config.js`).
+- ~~A settings window (no editing `config.js`).~~ Done (2026-10-20); the lock shortcut still needs a place in it.
 - Google OAuth verification (`calendar.events` is a sensitive scope; unverified apps are capped at 100 users).
 - Open-Meteo's free tier is non-commercial; a paid app needs their commercial plan or another provider.
 - Code-signing or Microsoft Store distribution, so there's no SmartScreen warning.

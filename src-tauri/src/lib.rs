@@ -7,7 +7,7 @@ mod wallpaper;
 use tauri::{
     menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu},
     tray::TrayIconBuilder,
-    AppHandle, Emitter, Manager, WindowEvent, Wry,
+    AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent, Wry,
 };
 use std::{sync::mpsc, time::Duration};
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
@@ -170,6 +170,33 @@ fn toggle_widget(app: &AppHandle, label: &str, item: &CheckMenuItem<Wry>) {
     let _ = item.set_checked(was_hidden); // it was hidden -> now shown -> ticked
 }
 
+// ---------- Settings window ----------
+
+/// Opens the settings window (settings.html), or brings it to the front if it's already open.
+/// It's an ordinary window, made when needed: not pinned to the desktop, not in tauri.conf.json.
+fn open_settings(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window("settings") {
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+        return;
+    }
+    // Built from another task: on Windows, making a window inside an event handler (this runs
+    // in the tray's) can deadlock WebView2. See WebviewWindowBuilder::new in Tauri's docs.
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let built = WebviewWindowBuilder::new(&app, "settings", WebviewUrl::App("settings.html".into()))
+            .title("Desk Widgets settings")
+            .inner_size(500.0, 720.0)
+            .resizable(false)
+            .maximizable(false)
+            .center()
+            .build();
+        if let Err(e) = built {
+            eprintln!("Couldn't open the settings window: {e}");
+        }
+    });
+}
+
 // ---------- Lock ----------
 
 /// Keyboard shortcut that locks/unlocks the widgets from anywhere.
@@ -232,11 +259,13 @@ pub fn run() {
             let starts_at_login = app.autolaunch().is_enabled().unwrap_or(false);
             let autostart =
                 CheckMenuItem::with_id(app, "autostart", "Open at login", true, starts_at_login, None::<&str>)?;
+            let settings = MenuItem::with_id(app, "settings", "Settings…", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit widgets", true, None::<&str>)?;
             let menu = Menu::with_items(
                 app,
                 &[
                     &widgets_menu,
+                    &settings,
                     &PredefinedMenuItem::separator(app)?,
                     &lock,
                     &autostart,
@@ -264,6 +293,7 @@ pub fn run() {
                     }
 
                     match id {
+                        "settings" => open_settings(app),
                         "lock" => toggle_lock(app, &lock_item),
                         "autostart" => {
                             let launcher = app.autolaunch();

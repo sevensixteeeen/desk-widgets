@@ -1,24 +1,36 @@
-import { config } from "./config.js";
+import { config, withDefaults } from "./config.js";
 import { inTauri, invoke, widgetName, startDrag, resizeWindow, onEvent } from "./api.js";
 import { startTheme } from "./theme.js";
-import { loadStore } from "./store.js";
+import { loadStore, getSaved } from "./store.js";
 import { restoreSize, startResizing } from "./resize.js";
 import { mountClock } from "./widgets/clock.js";
 import { mountNowPlaying } from "./widgets/nowplaying.js";
 import { mountWeather } from "./widgets/weather.js";
 import { mountCalendar } from "./widgets/calendar.js";
 
+// uses: the config.js settings each widget reads besides scale, so it reloads only when one of them changes.
 const widgets = {
-  clock: { mount: mountClock }, // no size: it grows with the clocks you add
-  nowplaying: { mount: mountNowPlaying, size: config.nowPlayingStyle === "card" ? [380, 150] : [380, 230] }, // fixed size
-  weather: { mount: mountWeather, size: [380, 220] },
-  calendar: { mount: mountCalendar, size: [320, 490] },
+  clock: { mount: mountClock, uses: ["clockStyle", "clockSeconds", "hour12"] }, // no size: it grows with the clocks you add
+  nowplaying: { mount: mountNowPlaying, size: config.nowPlayingStyle === "card" ? [380, 150] : [380, 230], uses: ["nowPlayingStyle"] }, // fixed size
+  weather: { mount: mountWeather, size: [380, 220], uses: ["temperatureUnit"] },
+  calendar: { mount: mountCalendar, size: [320, 490], uses: ["hour12", "weekStartsOn", "upcomingEvents"] },
 };
 const widget = widgets[widgetName];
+
+// ---- Settings ----
+// config.js merges your choices from the settings window before anything runs, so a widget takes a
+// change by reloading. It starts listening before reading the saved setup below, then compares once
+// more, so a change made while it was starting up isn't missed.
+function reloadIfChanged(chosen) {
+  const next = withDefaults(chosen);
+  if (["scale", ...widget.uses].some((key) => next[key] !== config[key])) location.reload();
+}
+await onEvent("store-changed", ({ key, value }) => key === "config" && reloadIfChanged(value));
 
 // ---- Saved setup ----
 // Sizes, clocks and the weather city, read once before anything below asks for them.
 await loadStore();
+reloadIfChanged(getSaved("config"));
 
 // ---- Size ----
 // Widgets are designed at full size; `zoom` shrinks everything inside evenly,

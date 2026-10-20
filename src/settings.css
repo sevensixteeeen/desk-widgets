@@ -1,0 +1,49 @@
+/* ---------- Settings window (settings.html) ----------
+   An ordinary window, unlike the see-through widgets: an opaque page that scrolls if it has to.
+   Colours and type come from styles.css and the wallpaper theme, like the widgets. */
+
+html, body { background: var(--paper-solid); overflow: auto; }
+
+.settings { display: flex; flex-direction: column; gap: 14px; padding: 18px 24px 14px; }
+.settings h1 { font-size: 26px; font-weight: 300; letter-spacing: -0.01em; margin-bottom: 2px; }
+
+.set-section { display: flex; flex-direction: column; gap: 4px; }
+.set-section h2 {
+  font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--muted); padding-bottom: 6px; border-bottom: 1px solid var(--rule);
+}
+.set-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 34px; font-size: 14px; }
+.set-label { font-weight: 500; }
+
+/* A row of radio buttons drawn as one segmented control. The inputs stay focusable, just invisible. */
+.set-pills { display: inline-flex; padding: 3px; border-radius: 999px; background: var(--rule); }
+.set-pill, .set-face { position: relative; }
+.set-pill input, .set-face input { position: absolute; opacity: 0; pointer-events: none; }
+.set-pill span {
+  display: block; padding: 5px 14px; border-radius: 999px;
+  font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer;
+}
+.set-pill span:hover { color: var(--ink); }
+.set-pill input:checked + span { background: var(--accent-a); color: var(--paper-solid); }
+.set-pill input:focus-visible + span { outline: 2px solid var(--accent-b); outline-offset: 2px; }
+
+/* Faces: the real dials (dials.js), small, all six in a row. .clock on the grid supplies the dial colours. */
+.set-faces { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; padding: 6px 0 2px; }
+.set-face {
+  --face: var(--day-face); --hand: var(--day-hand);
+  display: flex; flex-direction: column; align-items: center; gap: 5px;
+  padding: 8px 2px 6px; border: 2px solid transparent; border-radius: 12px; cursor: pointer;
+}
+.set-face:hover { background: var(--rule); }
+.set-face:has(input:checked) { border-color: var(--accent-a); }
+.set-face:has(input:focus-visible) { outline: 2px solid var(--accent-b); outline-offset: 2px; }
+.set-face .dial { width: 54px; height: 54px; }
+.set-face span { font-size: 11.5px; font-weight: 500; line-height: 1.2; text-align: center; }
+.set-face .dial-second, .set-face .ring-second { display: none; } /* the previews only move once a minute */
+
+.set-size { display: flex; align-items: center; gap: 10px; }
+.set-size input { width: 150px; accent-color: var(--accent-a); }
+.set-size output { min-width: 40px; text-align: right; font-size: 13px; font-variant-numeric: tabular-nums; color: var(--muted); }
+
+.set-foot { display: flex; align-items: center; justify-content: space-between; padding-top: 12px; border-top: 1px solid var(--rule); }
+.set-foot .btn-quiet { margin-left: -10px; }

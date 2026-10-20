@@ -20,14 +20,15 @@ Desktop widgets for Windows: an analog world clock, now playing, weather, and Go
 
 ## Features
 
-- **Clock:** a dial for your time and any cities or countries you add, light by day and dark by night, with how far ahead or behind each one is. The default 24-hour face shades each city's real night, from sunset to sunrise, and shows its weather by day (sun, cloud, rain...) and tonight's moon, in its real phase, at night. Five other faces to choose from in `config.js`.
+- **Clock:** a dial for your time and any cities or countries you add, light by day and dark by night, with how far ahead or behind each one is. The default 24-hour face shades each city's real night, from sunset to sunrise, and shows its weather by day (sun, cloud, rain...) and tonight's moon, in its real phase, at night. Five other faces to choose from in Settings.
 - **Now playing:** a turntable for whatever is playing in Spotify, YouTube in Chrome, or any app that reports media to Windows. The record spins while music plays, the album cover is its centre label, and the tonearm moves inward as the song goes on. Shows whether it's playing from Spotify or YouTube, and the full song name. Play/pause/skip, and click or drag the arc around the record to jump anywhere in the song (in apps that let Windows control playback position). No Spotify login needed.
 - **Weather:** current conditions and the next 6 hours, from [Open-Meteo](https://open-meteo.com) (no API key).
 - **Calendar:** month view (browse with ‹ › or the mouse wheel) with events from every calendar ticked in your Google Calendar. The list under it follows the month on screen: upcoming events for this month, that month's events when you browse to another. Click a day or **+** to add an event to whichever calendar you choose.
 - **Themed from your wallpaper:** colours are pulled from your current wallpaper and update when you change it.
 - **Stays on the desktop:** behind your apps, and still visible after Win+D.
 - **Resizable:** make any widget bigger or smaller; each one remembers its size.
-- **Tray menu:** Show widgets (hide the ones you don't want), Lock widgets (stops accidental dragging), Open at login, Quit.
+- **Settings window:** pick the clock face (with live previews), second hand, 12/24-hour time, the week's first day, °C/°F, the now-playing style and the size of every widget. Changes show up right away.
+- **Tray menu:** Show widgets (hide the ones you don't want), Settings, Lock widgets (stops accidental dragging), Open at login, Quit.
 - **Ctrl+Alt+L** locks/unlocks the widgets from anywhere.
 
 ## Using it
@@ -36,6 +37,7 @@ Desktop widgets for Windows: an analog world clock, now playing, weather, and Go
 - **Resize a widget:** drag the small grip in its bottom-right corner (it appears when you point at the widget), or hold **Ctrl** and scroll the mouse wheel over it. Double-click the grip to go back to the default size.
 - **Lock them in place:** tray → **Lock widgets**, or **Ctrl+Alt+L** from anywhere.
 - **Hide a widget:** tray → **Show widgets** → untick it.
+- **Change settings:** tray → **Settings…**. Only the widgets a change affects reload; **Reset to defaults** undoes everything.
 - **Jump to a point in the song:** click or drag the arc around the record.
 - **Change the weather city:** click the city name.
 - **Add a clock for another country:** click **+** on the clock and type a city or country (e.g. Tokyo, Dubai, Japan). Point at a clock and click **×** to remove it.
@@ -64,7 +66,8 @@ Everything stays on your PC. The Google client file and sign-in token live in `%
 
 ```
 src/                   Frontend (plain HTML/CSS/JS, no bundler)
-  config.js            Your settings: size, 12/24h, week start, °C/°F, clock face, now-playing style
+  config.js            Default settings: size, 12/24h, week start, °C/°F, clock face, now-playing style
+  settings.*           The settings window (tray → Settings…), saved on top of those defaults
   main.js              Picks the widget for each window; size, drag and lock
   resize.js            Resize grip and Ctrl + wheel; remembers each widget's size
   theme.js             Turns the wallpaper into a colour palette
@@ -72,7 +75,7 @@ src/                   Frontend (plain HTML/CSS/JS, no bundler)
   styles.css           Design system and all widget styles
   widgets/*.js         One file per widget
 src-tauri/
-  tauri.conf.json      The 4 windows: start position, frameless, pinned to desktop
+  tauri.conf.json      The 4 widget windows: start position, frameless, pinned to desktop
   src/lib.rs           Commands exposed to JS, tray menu, plugins, Win+D fix
   src/media.rs         Now playing (Windows media session API)
   src/gcal.rs          Google sign-in, reading and adding events

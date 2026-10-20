@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "settings",
+  "description": "Permissions for the settings window: events and the app version, nothing that moves or resizes windows",
+  "windows": ["settings"],
+  "permissions": ["core:default"]
+}

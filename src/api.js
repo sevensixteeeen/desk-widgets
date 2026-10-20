@@ -67,7 +67,8 @@ export async function makeRoom() {
 
   const others = [];
   for (const w of await tauri.window.getAllWindows()) {
-    if (w.label !== me.label && (await w.isVisible())) others.push({ win: w, rect: await rectOf(w) });
+    if (w.label === me.label || w.label === "settings") continue; // the settings window isn't a widget: leave it be
+    if (await w.isVisible()) others.push({ win: w, rect: await rectOf(w) });
   }
 
   const queue = [await rectOf(me)]; // rectangles that may be sitting on top of something
@@ -89,9 +90,9 @@ export function emitEvent(name, payload) {
   if (inTauri) tauri.event.emit(name, payload);
 }
 
-/** Listen for an event sent from Rust or another widget. */
+/** Listen for an event sent from Rust or another widget. Resolves once it's listening. */
 export function onEvent(name, handler) {
-  if (inTauri) tauri.event.listen(name, (e) => handler(e.payload));
+  return inTauri ? tauri.event.listen(name, (e) => handler(e.payload)) : Promise.resolve();
 }
 
 export function invoke(command, args) {
