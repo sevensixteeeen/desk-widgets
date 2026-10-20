@@ -26,6 +26,7 @@ export function mountClock(root) {
   let zones = loadZones();
   let cells = [];
   let lastMinute = "";
+  let shownSize = null; // grid size last drawn; null until the first render
   const skies = new Map(); // "lat,lon" -> "clear" | "cloudy" | "rain" ...
 
   // ---------- Clocks ----------
@@ -71,7 +72,12 @@ export function mountClock(root) {
     root.querySelector(".clock-add").addEventListener("click", () => openForm());
 
     // Grow or shrink to fit the clocks, then nudge any widget we'd now cover out of the way.
-    resizeWindow(...gridSize()).then(makeRoom);
+    // Not at startup: the other widgets are still settling into their saved spots then, so
+    // they'd look overlapped and get shoved somewhere new (and saved there).
+    const size = gridSize().join("x");
+    const grew = shownSize !== null && size !== shownSize;
+    shownSize = size;
+    resizeWindow(...gridSize()).then(() => grew && makeRoom());
     tick();
   }
 

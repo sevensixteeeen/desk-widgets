@@ -58,7 +58,12 @@ export async function makeRoom() {
     const [p, s] = await Promise.all([w.outerPosition(), w.outerSize()]);
     return { x: p.x, y: p.y, w: s.width, h: s.height };
   };
-  const overlaps = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+  // Windows are a little bigger than the cards they hold, so widgets placed side by side can
+  // touch at the edges. Only a real overlap (more than SLACK each way) counts, or they'd be shoved.
+  const SLACK = 40;
+  const overlaps = (a, b) =>
+    Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x) > SLACK &&
+    Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y) > SLACK;
 
   const others = [];
   for (const w of await tauri.window.getAllWindows()) {
