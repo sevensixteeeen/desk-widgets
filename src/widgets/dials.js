@@ -1,5 +1,5 @@
 import { config } from "../config.js";
-import { moonIcon, moonPhase, skyIcons } from "./sky.js";
+import { DEFAULT_SUN, isNight, moonIcon, moonPhase, skyIcons } from "./sky.js";
 
 /**
  * Clock faces. Pick one with config.clockStyle.
@@ -7,7 +7,8 @@ import { moonIcon, moonPhase, skyIcons } from "./sky.js";
  * Each style has:
  *   html        the SVG, drawn around (0, 0) in a 100 x 100 box, so rotate(deg) turns about the centre
  *   bind(svg)   finds its moving parts once and returns update(t, extra), called every tick
- *               with t = {hour, minute, second} (hour 0-23); extra = {sky} for faces that show weather
+ *               with t = {hour, minute, second} (hour 0-23); extra = {sky, sun, night}: the weather,
+ *               today's sunrise and daylight, and whether it's dark there (only the sun face uses them)
  *
  * Angles: 0° = 12 o'clock, clockwise, because that's how SVG's rotate() turns.
  */
@@ -42,6 +43,19 @@ function bindHands(svg) {
 
 const svg = (name, inner) =>
   `<svg class="dial dial-${name}" viewBox="-50 -50 100 100" aria-hidden="true"><circle class="dial-face" r="48"/>${inner}</svg>`;
+
+// The 24-hour face: where an hour of the day sits (+180: midnight at the bottom, noon at the top),
+// and its shaded night, a slice from sunset round through midnight to sunrise.
+const sunAngle = (h) => (h / 24) * 360 + 180;
+
+function nightShade({ rise, hours }) {
+  const dark = 24 - hours;
+  if (dark <= 0) return ""; // polar day
+  if (dark >= 24) return "M 0 -48 A 48 48 0 1 1 0 48 A 48 48 0 1 1 0 -48 Z"; // polar night: two halves, as one arc can't close a circle
+  const [x1, y1] = polar(sunAngle(rise + hours), 48); // sunset
+  const [x2, y2] = polar(sunAngle(rise), 48);
+  return `M 0 0 L ${x1} ${y1} A 48 48 0 ${dark > 12 ? 1 : 0} 1 ${x2} ${y2} Z`;
+}
 
 export const dials = {
   // 1. Ticks and hands.
@@ -87,13 +101,13 @@ export const dials = {
     },
   },
 
-  // 4. 24 hours on one turn: noon at the top, midnight at the bottom, the night half shaded.
+  // 4. 24 hours on one turn: noon at the top, midnight at the bottom, sunset to sunrise shaded.
   //    The hand ends in the weather there by day (sun, cloud, rain...) and tonight's moon by night.
   sun: {
     label: "24-hour sun",
-    wantsWeather: true, // tells clock.js to fetch the weather for each clock
+    wantsWeather: true, // tells clock.js to fetch the weather and sunrise for each clock
     html: svg("sun", `
-      <path class="sun-night" d="M -48 0 A 48 48 0 0 0 48 0 Z"/>
+      <path class="sun-night" d="${nightShade(DEFAULT_SUN)}"/>
       ${times(24, (i) => `<line class="dial-tick${i % 6 ? "" : " is-major"}" y1="${i % 6 ? -42 : -39}" y2="-45" transform="rotate(${i * 15})"/>`)}
       ${[[12, 0], [18, 90], [0, 180], [6, 270]].map(([h, deg]) => {
         const [x, y] = polar(deg, 23);
@@ -106,18 +120,23 @@ export const dials = {
       </g>
       <circle class="dial-cap" r="2.6"/>`),
     bind(el) {
-      const [hand, tip, digits] = [".sun-hand", ".sun-tip", ".sun-digits"].map((s) => el.querySelector(s));
+      const [hand, tip, digits, shade] = [".sun-hand", ".sun-tip", ".sun-digits", ".sun-night"].map((s) => el.querySelector(s));
       let shown = ""; // which icon is drawn, so it's only redrawn when it changes
-      return (t, { sky = "clear", moon = moonPhase() } = {}) => {
-        const h = t.hour + t.minute / 60 + t.second / 3600;
-        const angle = (h / 24) * 360 + 180; // +180: midnight is at the bottom
+      let shaded = nightShade(DEFAULT_SUN); // same for the night slice
+      return (t, { sky = "clear", sun = DEFAULT_SUN, night = isNight(t, sun), moon = moonPhase() } = {}) => {
+        const angle = sunAngle(t.hour + t.minute / 60 + t.second / 3600);
         hand.setAttribute("transform", `rotate(${angle})`);
         tip.setAttribute("transform", `rotate(${-angle})`); // turn the icon back upright
         digits.textContent = hhmm(t);
 
-        const night = t.hour < 6 || t.hour >= 18; // same rule as the shaded half and the dark dial
-        // The hand is in the top half by day and the bottom half at night: keep the time on the other side.
-        digits.setAttribute("y", night ? -11 : 11);
+        // The hand is in the top half from 6 to 18 and the bottom half otherwise: keep the time on the other side.
+        // This follows the hand, not sunrise, or a summer evening would put the time under it.
+        digits.setAttribute("y", t.hour < 6 || t.hour >= 18 ? -11 : 11);
+        const path = nightShade(sun);
+        if (path !== shaded) {
+          shaded = path;
+          shade.setAttribute("d", path);
+        }
         // The moon's shape changes slowly, so round it to 1/100 of a cycle (about 7 hours).
         const want = night ? `moon:${moon.toFixed(2)}` : `sky:${sky}`;
         if (want !== shown) {

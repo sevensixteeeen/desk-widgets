@@ -2,7 +2,7 @@ import { config } from "../config.js";
 import { inTauri, makeRoom, resizeWindow } from "../api.js";
 import { getSaved, setSaved } from "../store.js";
 import { chosenDial } from "./dials.js";
-import { fetchSkies } from "./sky.js";
+import { fetchSkies, isNight } from "./sky.js";
 
 // Typed places become time zones through Open-Meteo's geocoder (the weather widget uses it too).
 const GEO_URL = "https://geocoding-api.open-meteo.com/v1/search";
@@ -27,7 +27,7 @@ export function mountClock(root) {
   let cells = [];
   let lastMinute = "";
   let shownSize = null; // grid size last drawn; null until the first render
-  const skies = new Map(); // "lat,lon" -> "clear" | "cloudy" | "rain" ...
+  const skies = new Map(); // "lat,lon" -> {sky: "clear" | "cloudy" | "rain" ..., sun: {rise, hours}}
 
   // ---------- Clocks ----------
 
@@ -98,10 +98,15 @@ export function mountClock(root) {
 
     for (const c of cells) {
       const t = c.timeZone ? wallTime(c.timeZone, now) : here;
-      c.update(t, { sky: skies.get(placeKey(c.place)) ?? previewSky(cells.indexOf(c)) });
+      const { sky, sun } = skies.get(placeKey(c.place)) ?? { sky: previewSky(cells.indexOf(c)) };
+      // Dark from sunset to sunrise where the face fetches them (the sun face), 6 pm to 6 am otherwise:
+      // on the 12-hour faces, light and dark stand in for am and pm. Worked out once, so the dark dial,
+      // the sun face's shading and its sun or moon always agree.
+      const night = isNight(t, sun);
+      c.update(t, { sky, sun, night });
       if (!newMinute) continue;
 
-      c.el.classList.toggle("is-night", t.hour < 6 || t.hour >= 18); // dark dial from 6 pm to 6 am
+      c.el.classList.toggle("is-night", night);
       if (!c.timeZone) {
         c.name.textContent = now.toLocaleDateString(undefined, { weekday: "long" });
         c.day.textContent = now.toLocaleDateString(undefined, { day: "numeric", month: "long" });

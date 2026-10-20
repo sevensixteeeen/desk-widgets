@@ -16,18 +16,46 @@ export function skyFromCode(code) {
 }
 
 /**
- * Current weather for several places in ONE request (Open-Meteo takes comma-separated lists).
- * places: [{latitude, longitude}] -> resolves to the same-length list of icon names.
+ * Current weather and today's daylight for several places in ONE request (Open-Meteo takes comma-separated lists).
+ * places: [{latitude, longitude}] -> resolves to the same-length list of {sky, sun}:
+ *   sky  one of our icon names
+ *   sun  {rise, hours} (see sunOf), or undefined if Open-Meteo left it out
  */
 export async function fetchSkies(places) {
   const params = new URLSearchParams({
     latitude: places.map((p) => p.latitude.toFixed(3)).join(","),
     longitude: places.map((p) => p.longitude.toFixed(3)).join(","),
     current: "weather_code",
+    daily: "sunrise,daylight_duration",
+    timezone: "auto", // sunrise in each place's own local time
+    forecast_days: 1,
   });
   const res = await fetch(`${FORECAST_URL}?${params}`).then((r) => r.json());
   const list = Array.isArray(res) ? res : [res]; // one place -> plain object, several -> array
-  return list.map((r) => skyFromCode(r.current?.weather_code ?? 0));
+  return list.map((r) => ({ sky: skyFromCode(r.current?.weather_code ?? 0), sun: sunOf(r.daily) }));
+}
+
+// ---------- Sun ----------
+
+/** Until the weather arrives, and for places it can't reach (zone IDs like UTC): up at 6, down at 18. */
+export const DEFAULT_SUN = { rise: 6, hours: 12 };
+
+/**
+ * Open-Meteo's daily block -> {rise, hours}: sunrise as a local hour (6.4 = 06:24) and hours of daylight.
+ * Polar night comes as sunrise 00:00 with 0 hours, polar day as 00:00 with 24.
+ */
+function sunOf(daily) {
+  const rise = daily?.sunrise?.[0], light = daily?.daylight_duration?.[0];
+  if (!rise || light == null) return undefined;
+  // "2026-10-20T06:24" is read as text: new Date() would take it as this PC's time zone, not the place's.
+  const [h, m] = rise.slice(11, 16).split(":").map(Number);
+  return { rise: h + m / 60, hours: light / 3600 };
+}
+
+/** Whether it's dark at wall time t. Counting hours since sunrise also covers a sunset after midnight. */
+export function isNight(t, sun = DEFAULT_SUN) {
+  const sinceRise = (((t.hour + t.minute / 60 - sun.rise) % 24) + 24) % 24;
+  return sinceRise >= sun.hours;
 }
 
 // ---------- Moon ----------
