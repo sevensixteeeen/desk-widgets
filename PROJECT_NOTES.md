@@ -180,7 +180,7 @@ Two ways in, one function: the tray's **Lock widgets** item and the global short
 ### Clock (`clock.js`)
 
 - **One analog dial per place:** yours first (its name line shows the weekday and date), then the ones you've added, three to a row (`PER_ROW`). The window grows to fit, using the same sizes as the CSS (`CELL`, `GAP`, `PAD` in `clock.js`). Up to 8 clocks; the **+** hides at the limit.
-- **Making room:** after the clock resizes, `makeRoom()` (`api.js`) moves any visible widget it now overlaps to just below it, or to its right when there's no room below on the screen. A moved widget can push the next one the same way. It works in physical pixels, and needs the `core:window:allow-set-position` permission in `capabilities/default.json`.
+- **Making room:** after the clock grows (not on its first render at startup, while the other widgets are still settling into their saved spots), `makeRoom()` (`api.js`) moves any visible widget it now overlaps to just below it, or to its right when there's no room below on the screen. A moved widget can push the next one the same way. Only a real overlap counts: more than 40 px (`SLACK`) both across and down. Windows are a little bigger than their cards, so widgets placed side by side touch at the edges and would otherwise be shoved. It works in physical pixels, and needs the `core:window:allow-set-position` permission in `capabilities/default.json`.
 - **No digits:** a dial is light from 6 am to 6 pm and dark at night (in both themes), so 3 am and 3 pm look different. Under each added clock: "Today/Tomorrow/Yesterday" and how far it is from you (`+5h 30m`, `−4h`, `+15m`).
 - **Time zones are left to `Intl`:** each zone's wall-clock time comes from `Intl.DateTimeFormat({ timeZone }).formatToParts()`, and the difference is measured between the two wall clocks. Nothing is calculated by hand, so daylight saving and half/quarter-hour zones (India, Nepal) just work.
 - **Adding:** **+** opens a form. What you type is looked up with Open-Meteo's geocoder, which returns the place's time zone (`Japan` → `Asia/Tokyo`, `Dubai` → `Asia/Dubai`). Countries with several zones (United States, Russia, Australia) come back without one, and the form asks for a city instead. `UTC`, `GMT` and IDs with a slash (`Asia/Tokyo`) are used directly, without a network call; that check runs first, or the geocoder would read "UTC" as Utrecht. Plain names like "Japan" or "Singapore" are also old zone aliases, so they're deliberately left to the geocoder to keep the name you typed.
@@ -454,6 +454,7 @@ Each person's calendar data goes directly between their PC and Google; nobody el
 | VS Code opens the `.exe` as text | VS Code can't run programs | Run it from the terminal with `& ".\path\to\setup.exe"` or from File Explorer |
 | Rust error "`X` is defined multiple times" / "redefined here" | Pasted new code next to the old code instead of replacing it | Delete the duplicate; use **Ctrl+Shift+O** in VS Code to spot items listed twice |
 | Sizes, added clocks or moved widgets gone after restarting the laptop (v0.5.0 and earlier) | Shutdown ended the app mid-write and broke WebView2's `localStorage` log, so every later change was dropped at startup; positions were only saved on **Quit** | v0.5.1 saves to `widgets.json` and saves positions after each move (see Saved setup) |
+| Calendar and now playing jump below the clock after a restart or resize | `makeRoom()` treated widgets whose windows just touched as overlapping, and also ran at startup | Ignore overlaps under 40 px; skip it on the clock's first render (see Clock) |
 | A new feature does nothing | Edits weren't saved (white dot on the tab), or were made in another copy of the project | Save all (**Ctrl+K, S**); check the tab's path is the inner `desk-widgets\desk-widgets` folder |
 
 ---
@@ -525,6 +526,7 @@ Options if you want it lower:
 | 2026-10-09 | v0.5.0: resize any widget; released on GitHub |
 | 2026-10-09 | Sizes, clocks, city and positions survive shutting the laptop down: saved to `widgets.json` instead of `localStorage`, and positions saved after each move |
 | 2026-10-09 | v0.5.1: widget setup survives shutting the laptop down; released on GitHub |
+| 2026-10-20 | Widgets no longer shove each other out of place when the clock grows; default layout: calendar top-left, clock beside it, now playing below the clock |
 
 ## 20. Ideas for later
 
