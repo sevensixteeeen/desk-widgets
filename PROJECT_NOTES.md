@@ -225,7 +225,8 @@ Two ways in, one function: the tray's **Lock widgets** item and the global short
 
 ### Weather (`weather.js`)
 
-- The city is typed once, geocoded with Open-Meteo, and saved to `widgets.json`. Click the city name to change it.
+- The city is typed once, geocoded with Open-Meteo, and saved to `widgets.json` as `{name, latitude, longitude, region}` (cities saved before 0.5.4 have no `region`). Click the city name to change it; Esc goes back. Pointing at the name shows the region ("Gurugram, Haryana, India").
+- **Same-named places:** the search asks for 10 matches. One match, or a first one more than ten times bigger than every other (Lisbon, Portugal vs Lisbon, Maine), is saved straight away (`obvious()`). Otherwise up to 4 are listed with district, state and country to pick from. The search can miss a city's old name entirely: "Gurgaon" only finds villages, Gurugram is found under its official name, which is what the "Not listed?" line is for. Each choice is a `<button>`, because `main.js` starts a window drag on mousedown anywhere else.
 - Refreshes every 15 minutes.
 - Weather codes (WMO) are mapped to words.
 
@@ -495,6 +496,7 @@ Each person's calendar data goes directly between their PC and Google; nobody el
 - The installer is **unsigned**, so SmartScreen shows a warning on install.
 - Adding a clock by place name needs internet (zone IDs like `UTC` or `Asia/Tokyo` don't). Once added, clocks work offline.
 - When the clock grows, widgets it covers are moved out of the way, but they don't move back when it shrinks again.
+- Adding a clock city still takes the search's first match (the weather city has a picker). It rarely matters: places sharing a name are usually in the same time zone, though the 24-hour face's sunrise would be for the wrong one.
 
 ---
 
@@ -554,6 +556,7 @@ Options if you want it lower:
 | 2026-10-20 | Settings window (tray → Settings…): clock face with live previews, second hand, 12/24-hour, week start, °C/°F, now-playing style and widget size; changes apply right away |
 | 2026-10-20 | README: screenshots of the six clock faces, wallpaper themes and the settings window |
 | 2026-10-20 | v0.5.3: settings window; released on GitHub |
+| 2026-10-20 | Weather city: pick from a list when several places share the name, region shown on the city name. Fixed a saved "Gurgaon" that was a village in Maharashtra, not Gurugram |
 
 ## 20. Ideas for later
 

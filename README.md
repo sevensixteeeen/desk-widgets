@@ -53,7 +53,7 @@ Desktop widgets for Windows: an analog world clock, now playing, weather, and Go
 - **Hide a widget:** tray → **Show widgets** → untick it.
 - **Change settings:** tray → **Settings…**. Only the widgets a change affects reload; **Reset to defaults** undoes everything.
 - **Jump to a point in the song:** click or drag the arc around the record.
-- **Change the weather city:** click the city name.
+- **Change the weather city:** click the city name and type a new one. If several places share the name, pick yours from the list, which shows each one's district, state and country.
 - **Add a clock for another country:** click **+** on the clock and type a city or country (e.g. Tokyo, Dubai, Japan). Point at a clock and click **×** to remove it.
 - **Quit:** tray → **Quit widgets**.
 

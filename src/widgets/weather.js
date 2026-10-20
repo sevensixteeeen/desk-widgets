@@ -5,7 +5,8 @@ import { getSaved, setSaved } from "../store.js";
 const GEO_URL = "https://geocoding-api.open-meteo.com/v1/search";
 const FORECAST_URL = "https://api.open-meteo.com/v1/forecast";
 const REFRESH_MS = 15 * 60 * 1000;
-const CITY_KEY = "weather.city"; // saved as {name, latitude, longitude}
+const CITY_KEY = "weather.city"; // saved as {name, latitude, longitude, region}; cities saved before 0.5.4 have no region
+const CHOICES = 4; // places listed when a name matches several and none stands out
 
 // WMO weather codes -> words
 const CONDITIONS = {
@@ -19,38 +20,75 @@ const CONDITIONS = {
 
 export function mountWeather(root) {
   let timer = null;
-  const saved = getSaved(CITY_KEY);
-  saved ? showWeather(saved) : askCity();
+  let current = getSaved(CITY_KEY);
+  current ? showWeather(current) : askCity();
 
-  function askCity(message = "") {
+  function askCity(message = "", text = "") {
     clearInterval(timer);
     root.innerHTML = `
       <form class="wx-form">
         <label for="city">Which city?</label>
         <input id="city" autocomplete="off" placeholder="e.g. Lisbon" />
-        <p class="note">${message || "Press Enter to save."}</p>
+        <p class="note"></p>
       </form>`;
     const input = root.querySelector("input");
+    root.querySelector(".note").textContent = message || (current ? "Press Enter to save, Esc to cancel." : "Press Enter to save.");
+    input.value = text; // what you typed, kept after an error or Back
     input.focus();
+    input.addEventListener("keydown", (e) => e.key === "Escape" && current && showWeather(current));
     root.querySelector("form").addEventListener("submit", async (e) => {
       e.preventDefault();
       const name = input.value.trim();
       if (!name) return;
+      let places;
       try {
-        const res = await fetch(`${GEO_URL}?name=${encodeURIComponent(name)}&count=1`).then((r) => r.json());
-        const place = res.results?.[0];
-        if (!place) return askCity(`No city called "${name}". Check the spelling.`);
-        const city = { name: place.name, latitude: place.latitude, longitude: place.longitude };
-        setSaved(CITY_KEY, city);
-        showWeather(city);
+        // Several matches, so a far bigger first one can be told apart from a tie.
+        const res = await fetch(`${GEO_URL}?name=${encodeURIComponent(name)}&count=10`).then((r) => r.json());
+        places = res.results ?? [];
       } catch {
-        askCity("Can't reach the weather service. Check your connection.");
+        return askCity("Can't reach the weather service. Check your connection.", name);
       }
+      if (!places.length) return askCity(`No city called "${name}". Check the spelling.`, name);
+      obvious(places) ? choose(places[0]) : pickPlace(name, places.slice(0, CHOICES));
     });
   }
 
+  // Several places share the name (the search knows ten villages called Gurgaon, and Gurugram only by
+  // that name): list them with district, state and country, so the one you meant is clear, or clearly missing.
+  // Each choice is a <button>: main.js starts a window drag on mousedown anywhere else.
+  function pickPlace(name, places) {
+    root.innerHTML = `
+      <div class="wx-form wx-pick">
+        <p class="wx-pick-title"></p>
+        <div class="wx-choices"></div>
+        <p class="note">Not listed? Try its official name. <button type="button" class="btn-quiet">Back</button></p>
+      </div>`;
+    root.querySelector(".wx-pick-title").textContent = `Which ${name}?`;
+    const list = root.querySelector(".wx-choices");
+    for (const place of places) {
+      const choice = document.createElement("button");
+      choice.type = "button";
+      choice.className = "wx-choice";
+      choice.innerHTML = "<b></b><span></span>";
+      choice.querySelector("b").textContent = place.name;
+      choice.querySelector("span").textContent = regionOf(place, true);
+      choice.addEventListener("click", () => choose(place));
+      list.append(choice);
+    }
+    root.querySelector(".btn-quiet").addEventListener("click", () => askCity("", name));
+    root.querySelector(".wx-pick").addEventListener("keydown", (e) => e.key === "Escape" && askCity("", name));
+    list.firstElementChild.focus();
+  }
+
+  function choose(place) {
+    current = { name: place.name, latitude: place.latitude, longitude: place.longitude, region: regionOf(place) };
+    setSaved(CITY_KEY, current);
+    showWeather(current);
+  }
+
   function showWeather(city) {
-    root.innerHTML = `<div class="wx"><p class="note">Loading weather for ${city.name}…</p></div>`;
+    root.innerHTML = `<div class="wx"><p class="note"></p></div>`;
+    root.querySelector(".note").textContent = `Loading weather for ${city.name}…`; // names from the search go in as text
     const load = () => fetchWeather(city).then((d) => render(city, d)).catch(() => {
       root.innerHTML = `<div class="wx"><p class="note">Can't reach the weather service. Trying again in 15 minutes.</p></div>`;
     });
@@ -80,7 +118,7 @@ export function mountWeather(root) {
           <span class="print">${temp}</span>
           <div class="wx-side">
             <p class="wx-cond">${CONDITIONS[d.current.weather_code] ?? "—"}</p>
-            <button class="wx-city" title="Change city">${city.name}</button>
+            <button class="wx-city"></button>
             <p class="wx-feels">High ${round(d.daily.temperature_2m_max[0])}°, low ${round(d.daily.temperature_2m_min[0])}°</p>
           </div>
         </div>
@@ -93,9 +131,22 @@ export function mountWeather(root) {
             </div>`).join("")}
         </div>
       </div>`;
-    root.querySelector(".wx-city").addEventListener("click", () => askCity());
+    const cityButton = root.querySelector(".wx-city");
+    cityButton.textContent = city.name;
+    cityButton.title = city.region ? `${city.name}, ${city.region}. Click to change.` : "Change city";
+    cityButton.addEventListener("click", () => askCity());
   }
 }
+
+/** One match, or a first match far bigger than the rest (Lisbon, Portugal vs Lisbon, Maine): no need to ask. */
+function obvious(places) {
+  const [first, ...rest] = places;
+  return !rest.length || (first.population > 0 && rest.every((p) => (p.population ?? 0) * 10 < first.population));
+}
+
+// "Haryana, India", or with the district too ("Hingoli District, Maharashtra, India") to tell same-named villages apart.
+const regionOf = (place, withDistrict = false) =>
+  [withDistrict && place.admin2 !== place.name && place.admin2, place.admin1, place.country].filter(Boolean).join(", ");
 
 async function fetchWeather(city) {
   const params = new URLSearchParams({

@@ -402,6 +402,20 @@ button:focus-visible, input:focus-visible {
   border: 1.5px solid var(--rule); border-radius: 8px; background: transparent; color: var(--ink);
 }
 
+/* Several places share the name you typed (weather.js → pickPlace): up to 4, one per row. */
+.wx-pick { gap: 6px; }
+.wx-pick-title { font-size: 15px; font-weight: 600; }
+.wx-choices { display: flex; flex-direction: column; }
+.wx-choice {
+  display: flex; align-items: baseline; gap: 8px; min-width: 0;
+  padding: 4px 8px; margin: 0 -8px; border-radius: 6px; text-align: left;
+}
+.wx-choice:hover { background: var(--rule); }
+.wx-choice b { font-size: 14px; font-weight: 600; white-space: nowrap; }
+.wx-choice span { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wx-pick .note { font-size: 12px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.wx-pick .btn-quiet { height: 26px; }
+
 /* ---------- Calendar ---------- */
 .cal { display: flex; flex-direction: column; height: 100%; }
 /* Two lines: year + Today on top, month name + controls below. */
