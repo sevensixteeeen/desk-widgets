@@ -108,8 +108,12 @@ export const skyIcons = {
   fog: `<g class="sky-fog">${[-3, 0, 3].map((y, i) => `<line x1="${-5 + i}" x2="${5 - (i % 2) * 2}" y1="${y}" y2="${y}"/>`).join("")}</g>`,
 };
 
-/** The moon at `phase`: a hollow outline with the lit part filled in. */
-export function moonIcon(phase) {
+/**
+ * The moon at `phase`: a hollow outline with the lit part filled in. South of the equator the moon is
+ * seen the other way round (a waxing moon is lit on the left), so it's mirrored there.
+ */
+export function moonIcon(phase, south = false) {
   const r = 5;
-  return `<circle class="sky-moon-outline" r="${r}"/><path class="sky-moon-lit" d="${moonPath(phase, r)}"/>`;
+  const moon = `<circle class="sky-moon-outline" r="${r}"/><path class="sky-moon-lit" d="${moonPath(phase, r)}"/>`;
+  return south ? `<g transform="scale(-1 1)">${moon}</g>` : moon;
 }

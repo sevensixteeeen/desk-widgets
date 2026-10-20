@@ -120,26 +120,31 @@ fn pin_to_desktop(window: &tauri::WebviewWindow) {
     }
 }
 
-// ---------- Saving positions ----------
+// ---------- Saving positions and sizes ----------
 
-/// The window-state plugin only writes positions to disk when the app quits, but shutting
-/// Windows down ends the app without quitting it, so a moved widget came back where it was.
-/// Instead, save half a second after widgets stop moving. Send () on every move.
-fn save_positions_after_moves(app: &AppHandle) -> mpsc::Sender<()> {
-    let (moved, moves) = mpsc::channel();
+/// What the window-state plugin remembers for each widget: where it is, and its size, so it opens
+/// at last time's size instead of its tauri.conf.json size and then jumping when the page sets it.
+/// The page (config.js, resize.js) still decides the size; this is only last time's answer.
+const REMEMBERED: StateFlags = StateFlags::POSITION.union(StateFlags::SIZE);
+
+/// The window-state plugin only writes to disk when the app quits, but shutting Windows down
+/// ends the app without quitting it, so a moved widget came back where it was.
+/// Instead, save half a second after widgets stop moving or resizing. Send () on every change.
+fn save_state_after_changes(app: &AppHandle) -> mpsc::Sender<()> {
+    let (changed, changes) = mpsc::channel();
     let app = app.clone();
     std::thread::spawn(move || {
-        while moves.recv().is_ok() {
-            while moves.recv_timeout(Duration::from_millis(500)).is_ok() {} // still moving
+        while changes.recv().is_ok() {
+            while changes.recv_timeout(Duration::from_millis(500)).is_ok() {} // still changing
             // On the main thread, like the plugin's own save at quit: from here it could deadlock
             // with the plugin's move handler.
             let handle = app.clone();
             let _ = app.run_on_main_thread(move || {
-                let _ = handle.save_window_state(StateFlags::POSITION);
+                let _ = handle.save_window_state(REMEMBERED);
             });
         }
     });
-    moved
+    changed
 }
 
 // ---------- Show / hide widgets ----------
@@ -221,10 +226,12 @@ pub fn run() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         // Registers/unregisters the app in Windows' startup list (HKCU\...\Run).
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
-        // Only remember position; sizes come from config.js.
+        // Remembers each widget's position and size (REMEMBERED). Not the settings window: it opens
+        // centred at the size open_settings() gives it, so a change to that size always shows.
         .plugin(
             tauri_plugin_window_state::Builder::default()
-                .with_state_flags(StateFlags::POSITION)
+                .with_state_flags(REMEMBERED)
+                .with_denylist(&["settings"])
                 .build(),
         )
         .setup(|app| {
@@ -303,7 +310,7 @@ pub fn run() {
                             let _ = autostart_item.set_checked(launcher.is_enabled().unwrap_or(false));
                         }
                         "quit" => {
-                            let _ = app.save_window_state(StateFlags::POSITION);
+                            let _ = app.save_window_state(REMEMBERED);
                             app.exit(0);
                         }
                         _ => {}
@@ -311,15 +318,24 @@ pub fn run() {
                 })
                 .build(app)?;
 
-            let moved = save_positions_after_moves(app.handle());
+            let changed = save_state_after_changes(app.handle());
             for window in app.webview_windows().values() {
                 #[cfg(windows)]
                 pin_to_desktop(window);
 
-                let moved = moved.clone();
+                // Versions before 0.5.4 didn't remember sizes and saved them as 0 x 0, which the
+                // window-state plugin restores without checking. Give such a widget its tauri.conf.json
+                // size, so the first start after updating looks like before; the page then sets the size.
+                if window.inner_size().is_ok_and(|size| size.width == 0 || size.height == 0) {
+                    if let Some(conf) = app.config().app.windows.iter().find(|c| c.label == window.label()) {
+                        let _ = window.set_size(tauri::LogicalSize::new(conf.width, conf.height));
+                    }
+                }
+
+                let changed = changed.clone();
                 window.on_window_event(move |event| {
-                    if let WindowEvent::Moved(_) = event {
-                        let _ = moved.send(());
+                    if let WindowEvent::Moved(_) | WindowEvent::Resized(_) = event {
+                        let _ = changed.send(());
                     }
                 });
 

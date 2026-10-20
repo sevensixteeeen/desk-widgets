@@ -164,7 +164,7 @@ Sizes, added clocks, the weather city and the last calendar used are kept in `%A
 - **JS side:** `main.js` awaits `loadStore()` before `restoreSize()` and mounting, so `getSaved()` answers synchronously after that. `setSaved()` updates the copy and sends the key to Rust. In a browser preview it's plain `localStorage`.
 - **Moving from older versions:** `loadStore()` sends whatever this window's `localStorage` still has for those keys; Rust copies in only keys the file doesn't have yet. `theme.*` stays in `localStorage`: it's only a cache.
 
-**Positions** are saved by `tauri-plugin-window-state`, which only writes its file when the app quits. Windows shutting down doesn't quit it, so `lib.rs` also saves positions half a second after any widget stops moving (`save_positions_after_moves`: one thread waits on a channel that every `WindowEvent::Moved` sends to). The save runs on the main thread, like the plugin's own; from the waiting thread it could deadlock with the plugin's move handler, which locks the same cache.
+**Positions and sizes** are saved by `tauri-plugin-window-state` (`REMEMBERED` in `lib.rs`), so each widget opens where it was and at the size it had, instead of at its `tauri.conf.json` size and then jumping when the page sets the size. The page (`config.js`, `resize.js`) still decides the size; the saved one is only last time's answer. Versions before 0.5.4 saved sizes as 0 × 0 (they didn't remember them), and the plugin restores a size without checking it, so `lib.rs` gives any widget that comes back 0 × 0 its `tauri.conf.json` size before showing it. The first start after updating therefore looks like before, with one last jump; every start after that opens at the saved size. The plugin only writes its file when the app quits. Windows shutting down doesn't quit it, so `lib.rs` also saves half a second after any widget stops moving or resizing (`save_state_after_changes`: one thread waits on a channel that every `WindowEvent::Moved` and `Resized` sends to). The save runs on the main thread, like the plugin's own; from the waiting thread it could deadlock with the plugin's move handler, which locks the same cache.
 
 ### Lock (`lib.rs → toggle_lock`, `settings.rs`, `main.js`)
 
@@ -184,7 +184,7 @@ Two ways in, one function: the tray's **Lock widgets** item and the global short
 
 ### Settings window (`settings.js`, `config.js`, `lib.rs → open_settings`)
 
-- **Opening:** tray → **Settings…** calls `open_settings()`. If the window is open it's brought to the front; otherwise it's built from `settings.html` (500 × 720, not resizable) on an async task, because on Windows building a window inside an event handler can deadlock WebView2 (see `WebviewWindowBuilder::new` in Tauri's docs). It's an ordinary window: not pinned to the desktop, not in `tauri.conf.json`, and `makeRoom()` leaves it alone. The window-state plugin remembers where you put it. Its permissions are `capabilities/settings-window.json` (`core:default` only).
+- **Opening:** tray → **Settings…** calls `open_settings()`. If the window is open it's brought to the front; otherwise it's built from `settings.html` (500 × 720, not resizable) on an async task, because on Windows building a window inside an event handler can deadlock WebView2 (see `WebviewWindowBuilder::new` in Tauri's docs). It's an ordinary window: not pinned to the desktop, not in `tauri.conf.json`, and `makeRoom()` leaves it alone. It's left out of the window-state plugin (`with_denylist`), so it always opens centred at the size `open_settings()` gives it. Its permissions are `capabilities/settings-window.json` (`core:default` only).
 - **Saving:** every choice goes into one key, `config` in `widgets.json`, holding only what differs from the defaults, so a default changed in a later version still reaches you. Back to all defaults removes the key. Saves wait 300 ms after the last change, so clicking through the faces reloads the clock once. Radio inputs carry their values as JSON, so `true`, `1` and `"card"` keep their types.
 - **Applying:** `config.js` reads `config` with a top-level `await` before any other module runs, and `withDefaults()` merges it over the defaults (unknown keys and wrong types are ignored). Several modules use settings the moment they load (`scale` in `api.js`, the second hand in `dials.js`, the face in `clock.js`), so a widget applies a change by reloading. Each widget lists the settings it reads (`uses` in `main.js`) and reloads only when one of those or `scale` changed. It starts listening for `store-changed` before reading the saved setup and then compares once more, so a change made while it was starting isn't missed. A new setting must be added to the right `uses` lists, or widgets won't pick it up until they restart.
 - **Face previews** are the real dials from `dials.js`, showing the local time and moving once a minute (second hands hidden).
@@ -202,7 +202,7 @@ Two ways in, one function: the tray's **Lock widgets** item and the global short
 - **Faces** live in `dials.js`. Each has `html` (an SVG drawn around (0, 0), so `rotate()` turns about the centre) and `bind(svg)`, which finds the moving parts once and returns `update(time, extra)`. `clock.js` doesn't know which face it's driving. To make a new face, copy an entry and change its drawing.
 - **24-hour sun face:** the hand angle is `hours / 24 × 360 + 180` (the +180 puts midnight at the bottom). The icon on its tip is counter-rotated so it stays upright. The time text sits below the centre from 6 to 18 and above it otherwise: the half the hand isn't in. It follows the hand, not sunset, or a summer evening would put the text under the hand.
   - **Weather** (`sky.js`): one Open-Meteo request for all clocks at once (it accepts comma-separated latitudes and longitudes), every 20 minutes. The same request brings today's sunrise and hours of daylight. Your own clock uses the weather widget's city (`weather.city`); added clocks store their coordinates when added, and older ones are looked up by name once. The WMO weather code is mapped to one of 7 icons. Zone IDs typed directly (`UTC`) have no place, so they show the plain sun.
-  - **Moon:** the phase is the time since a known new moon (6 Jan 2000, 18:14 UTC) divided by the 29.53-day lunar month. The lit part is drawn as half a circle (the side facing the sun) plus half an ellipse (the line between light and dark), whose width is `cos(phase × 2π) × r`. The phase is the same everywhere on Earth, so all night-time clocks show the same moon.
+  - **Moon:** the phase is the time since a known new moon (6 Jan 2000, 18:14 UTC) divided by the 29.53-day lunar month. The lit part is drawn as half a circle (the side facing the sun) plus half an ellipse (the line between light and dark), whose width is `cos(phase × 2π) × r`. The phase is the same everywhere on Earth, so all night-time clocks show the same moon, but south of the equator it's seen the other way round (a waxing moon is lit on the left), so it's mirrored for clocks whose place has a negative latitude (`south`, passed in by `clock.js`).
   - **Sunrise and sunset:** the request asks for `daily=sunrise,daylight_duration` with `timezone=auto`, so each sunrise is in that place's own local time (read as text: `new Date()` would take it as this PC's zone). `isNight()` (`sky.js`) counts the hours since sunrise and compares them with the hours of daylight, which also covers a sunset after midnight, polar night (0 hours) and polar day (24). `clock.js` works it out once per clock and uses it for the dark dial, the shaded slice (sunset → midnight → sunrise, `nightShade()` in `dials.js`) and sun or moon, so the three always agree. Until the weather arrives, and for zone IDs with no place, it's 6 to 18. Your own clock pairs this PC's time with the weather city's sunrise, which is only off if the two are in different time zones.
   - The 12-hour faces don't fetch anything and stay light from 6 am to 6 pm: on them, light and dark stand in for am and pm.
 
@@ -314,7 +314,7 @@ Two ways in, one function: the tray's **Lock widgets** item and the global short
 
 **`%APPDATA%\com.deskwidgets.app\settings.json`** (written by the app): `locked` and `hidden` (list of hidden widget labels).
 
-**`src-tauri/tauri.conf.json`:** window labels, default positions, and base window sizes (already multiplied by `scale`; the clock's is the one-clock size, and it resizes itself from there). Default positions only matter on first run (after that, the saved positions win), but if a widget's height changes, check the one below it still clears it. App identifier: `com.deskwidgets.app`. Don't change the identifier; it decides the AppData folder where the Google files live.
+**`src-tauri/tauri.conf.json`:** window labels, default positions, and base window sizes (already multiplied by `scale`; the clock's is the one-clock size, and it resizes itself from there). Default positions and sizes only matter on first run (after that, the saved ones win, and the page sets the size anyway), but if a widget's height changes, check the one below it still clears it. App identifier: `com.deskwidgets.app`. Don't change the identifier; it decides the AppData folder where the Google files live.
 
 ---
 
@@ -325,7 +325,7 @@ Two ways in, one function: the tray's **Lock widgets** item and the global short
 | Google OAuth client | `%APPDATA%\com.deskwidgets.app\google_client.json` | **Never** |
 | Google sign-in token | `%APPDATA%\com.deskwidgets.app\google_token.json` | **Never** |
 | Settings (lock, hidden widgets) | `%APPDATA%\com.deskwidgets.app\settings.json` | No |
-| Widget positions | `%APPDATA%\com.deskwidgets.app\.window-state.json` (window-state plugin) | No |
+| Widget positions and sizes | `%APPDATA%\com.deskwidgets.app\.window-state.json` (window-state plugin) | No |
 | Weather city, added clocks, widget sizes, last calendar used, settings-window choices (`config`) | `%APPDATA%\com.deskwidgets.app\widgets.json` | No |
 | Theme cache | WebView `localStorage` | No |
 
@@ -484,13 +484,11 @@ Each person's calendar data goes directly between their PC and Google; nobody el
 - On the current month, the list looks 45 days ahead. Events further out show up (in the grid and the list) once you navigate to their month.
 - Seeking only works in apps that let Windows move their playback position; in others the arc just shows progress.
 - Windows reports the app that's playing, not the website, so anything playing in a browser is labelled **YouTube**.
-- The moon is drawn as seen from the northern hemisphere.
 - The 24-hour face uses 6 am / 6 pm until the first weather fetch, and always for zone IDs typed directly (`UTC`), which have no place to get a sunrise for.
 - Changing the lock shortcut means editing `lib.rs` and rebuilding (it isn't in the settings window).
 - A settings change reloads the widgets it affects, so they redraw once (and the calendar asks Google again if it's one of them).
 - A bigger size in Settings can make widgets overlap; nothing moves them apart, so drag them.
 - Hidden widgets keep running in the background (their windows are hidden, not closed).
-- A widget saved at a non-default size jumps to it a moment after startup: Rust shows the window at its `tauri.conf.json` size before the page loads and restores the size.
 - Widgets only scale evenly; you can't make one wider without making it taller.
 - When the wallpaper changes, each of the 4 widgets asks Rust separately, so Rust decodes it 4 times (about 16 ms each). Caching the result in Rust would make it once.
 - The installer is **unsigned**, so SmartScreen shows a warning on install.
@@ -557,6 +555,8 @@ Options if you want it lower:
 | 2026-10-20 | README: screenshots of the six clock faces, wallpaper themes and the settings window |
 | 2026-10-20 | v0.5.3: settings window; released on GitHub |
 | 2026-10-20 | Weather city: pick from a list when several places share the name, region shown on the city name. Fixed a saved "Gurgaon" that was a village in Maharashtra, not Gurugram |
+| 2026-10-20 | Widgets open at their saved size instead of jumping to it after startup (the window-state plugin remembers sizes too) |
+| 2026-10-20 | The moon is drawn the right way round for clocks south of the equator |
 
 ## 20. Ideas for later
 

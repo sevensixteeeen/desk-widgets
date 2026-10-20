@@ -7,8 +7,9 @@ import { DEFAULT_SUN, isNight, moonIcon, moonPhase, skyIcons } from "./sky.js";
  * Each style has:
  *   html        the SVG, drawn around (0, 0) in a 100 x 100 box, so rotate(deg) turns about the centre
  *   bind(svg)   finds its moving parts once and returns update(t, extra), called every tick
- *               with t = {hour, minute, second} (hour 0-23); extra = {sky, sun, night}: the weather,
- *               today's sunrise and daylight, and whether it's dark there (only the sun face uses them)
+ *               with t = {hour, minute, second} (hour 0-23); extra = {sky, sun, night, south}: the weather,
+ *               today's sunrise and daylight, whether it's dark there, and whether it's south of the equator
+ *               (only the sun face uses them)
  *
  * Angles: 0° = 12 o'clock, clockwise, because that's how SVG's rotate() turns.
  */
@@ -123,7 +124,7 @@ export const dials = {
       const [hand, tip, digits, shade] = [".sun-hand", ".sun-tip", ".sun-digits", ".sun-night"].map((s) => el.querySelector(s));
       let shown = ""; // which icon is drawn, so it's only redrawn when it changes
       let shaded = nightShade(DEFAULT_SUN); // same for the night slice
-      return (t, { sky = "clear", sun = DEFAULT_SUN, night = isNight(t, sun), moon = moonPhase() } = {}) => {
+      return (t, { sky = "clear", sun = DEFAULT_SUN, night = isNight(t, sun), south = false, moon = moonPhase() } = {}) => {
         const angle = sunAngle(t.hour + t.minute / 60 + t.second / 3600);
         hand.setAttribute("transform", `rotate(${angle})`);
         tip.setAttribute("transform", `rotate(${-angle})`); // turn the icon back upright
@@ -138,10 +139,10 @@ export const dials = {
           shade.setAttribute("d", path);
         }
         // The moon's shape changes slowly, so round it to 1/100 of a cycle (about 7 hours).
-        const want = night ? `moon:${moon.toFixed(2)}` : `sky:${sky}`;
+        const want = night ? `moon:${moon.toFixed(2)}:${south}` : `sky:${sky}`;
         if (want !== shown) {
           shown = want;
-          tip.innerHTML = night ? moonIcon(Number(moon.toFixed(2))) : skyIcons[sky] || skyIcons.clear;
+          tip.innerHTML = night ? moonIcon(Number(moon.toFixed(2)), south) : skyIcons[sky] || skyIcons.clear;
         }
       };
     },

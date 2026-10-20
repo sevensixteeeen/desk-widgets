@@ -103,7 +103,7 @@ export function mountClock(root) {
       // on the 12-hour faces, light and dark stand in for am and pm. Worked out once, so the dark dial,
       // the sun face's shading and its sun or moon always agree.
       const night = isNight(t, sun);
-      c.update(t, { sky, sun, night });
+      c.update(t, { sky, sun, night, south: c.place?.latitude < 0 }); // places without coordinates (UTC) count as north
       if (!newMinute) continue;
 
       c.el.classList.toggle("is-night", night);
