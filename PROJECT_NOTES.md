@@ -553,6 +553,7 @@ Options if you want it lower:
 | 2026-10-20 | v0.5.2: widgets stay where you put them, real sunrise and sunset on the 24-hour face; released on GitHub |
 | 2026-10-20 | Settings window (tray → Settings…): clock face with live previews, second hand, 12/24-hour, week start, °C/°F, now-playing style and widget size; changes apply right away |
 | 2026-10-20 | README: screenshots of the six clock faces, wallpaper themes and the settings window |
+| 2026-10-20 | v0.5.3: settings window; released on GitHub |
 
 ## 20. Ideas for later
 
