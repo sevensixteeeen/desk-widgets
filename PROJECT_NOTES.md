@@ -557,6 +557,7 @@ Options if you want it lower:
 | 2026-10-20 | Weather city: pick from a list when several places share the name, region shown on the city name. Fixed a saved "Gurgaon" that was a village in Maharashtra, not Gurugram |
 | 2026-10-20 | Widgets open at their saved size instead of jumping to it after startup (the window-state plugin remembers sizes too) |
 | 2026-10-20 | The moon is drawn the right way round for clocks south of the equator |
+| 2026-10-20 | v0.5.4: weather city list, no size jump at startup, southern moon; released on GitHub |
 
 ## 20. Ideas for later
 
