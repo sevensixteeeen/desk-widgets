@@ -123,6 +123,7 @@ desk-widgets/
 │     ├─ wallpaper.rs
 │     ├─ settings.rs
 │     └─ store.rs
+├─ screenshots/                README images (preview.png, the main one, sits at the top level)
 ├─ .gitignore
 ├─ README.md
 └─ package.json                 Only the Tauri CLI
@@ -405,6 +406,8 @@ cargo fmt              # (inside src-tauri) format Rust code
 
 Don't run `npm run tauri dev` while the installed app is open, or you'll get two sets of widgets.
 
+**README images** (`preview.png`, `screenshots/`) are the browser preview with its sample data, not a real desktop: serve `src/` (`python -m http.server`), frame `index.html?w=clock&dial=…&zones=…&sky=…&wp=…` and `settings.html?wp=…` at their real sizes (design size × 0.78), and screenshot at 2× in headless Edge (`--force-device-scale-factor=2 --screenshot`). `?wp=` themes them from any image; the ones in `screenshots/themes.jpg` are generated gradients, not someone's artwork.
+
 ---
 
 ## 13. Git and GitHub
@@ -549,6 +552,7 @@ Options if you want it lower:
 | 2026-10-20 | 24-hour sun face follows each city's real sunrise and sunset: the shaded night, sun or moon, and the dark dial |
 | 2026-10-20 | v0.5.2: widgets stay where you put them, real sunrise and sunset on the 24-hour face; released on GitHub |
 | 2026-10-20 | Settings window (tray → Settings…): clock face with live previews, second hand, 12/24-hour, week start, °C/°F, now-playing style and widget size; changes apply right away |
+| 2026-10-20 | README: screenshots of the six clock faces, wallpaper themes and the settings window |
 
 ## 20. Ideas for later
 

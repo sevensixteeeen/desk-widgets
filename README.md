@@ -31,6 +31,20 @@ Desktop widgets for Windows: an analog world clock, now playing, weather, and Go
 - **Tray menu:** Show widgets (hide the ones you don't want), Settings, Lock widgets (stops accidental dragging), Open at login, Quit.
 - **Ctrl+Alt+L** locks/unlocks the widgets from anywhere.
 
+## How it looks
+
+**Six clock faces.** Pick one in Settings. Each dial is light by day and dark by night.
+
+![The six clock faces: classic, numerals, rings, 24-hour sun, turning bezel and digital ring](screenshots/faces.png)
+
+**Colours from your wallpaper.** The same widgets on a light wallpaper and a dark one: the cards, text and accent colours all come from the picture behind them.
+
+![Clock and now playing themed from a light wallpaper (left) and a dark wallpaper (right)](screenshots/themes.jpg)
+
+**Settings.** Right-click the tray icon → **Settings…**. Changes apply right away, and the window follows your wallpaper too.
+
+![The settings window in a light theme and a dark theme](screenshots/settings.png)
+
 ## Using it
 
 - **Move a widget:** drag it. Positions are remembered.
