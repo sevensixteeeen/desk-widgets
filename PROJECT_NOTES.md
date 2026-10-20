@@ -530,6 +530,7 @@ Options if you want it lower:
 | 2026-10-09 | v0.5.1: widget setup survives shutting the laptop down; released on GitHub |
 | 2026-10-20 | Widgets no longer shove each other out of place when the clock grows; default layout: calendar top-left, clock beside it, now playing below the clock |
 | 2026-10-20 | 24-hour sun face follows each city's real sunrise and sunset: the shaded night, sun or moon, and the dark dial |
+| 2026-10-20 | v0.5.2: widgets stay where you put them, real sunrise and sunset on the 24-hour face; released on GitHub |
 
 ## 20. Ideas for later
 
