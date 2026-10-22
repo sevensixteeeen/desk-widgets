@@ -501,6 +501,9 @@ Each person's calendar data goes directly between their PC and Google; nobody el
 | Sizes, added clocks or moved widgets gone after restarting the laptop (v0.5.0 and earlier) | Shutdown ended the app mid-write and broke WebView2's `localStorage` log, so every later change was dropped at startup; positions were only saved on **Quit** | v0.5.1 saves to `widgets.json` and saves positions after each move (see Saved setup) |
 | Calendar and now playing jump below the clock after a restart or resize | `makeRoom()` treated widgets whose windows just touched as overlapping, and also ran at startup | Ignore overlaps under 40 px; skip it on the clock's first render (see Clock) |
 | A new feature does nothing | Edits weren't saved (white dot on the tab), or were made in another copy of the project | Save all (**Ctrl+K, S**); check the tab's path is the inner `desk-widgets\desk-widgets` folder |
+| `cargo` fails with "transfer too slow" / "connection was reset" while downloading crates | A slow or flaky connection to crates.io; cargo then sits on a stalled download | Stop it and run again with `CARGO_HTTP_MULTIPLEXING=false` (one download per connection), or switch network |
+| Pushing `.github/workflows/release.yml` is refused | The GitHub CLI's login, which `git` uses, lacked the `workflow` permission | `gh auth refresh -h github.com -s workflow` in your own PowerShell window (it needs the browser) |
+| Release build fails: "failed to decode base64 secret key: Invalid symbol 239, offset 0" | The key secret was set by piping it into `gh` in Windows PowerShell 5.1, which adds an invisible BOM (byte 239) at the start | Set it again with `--body $key` (see Publishing a release), then **Re-run** the failed workflow; the tag stays |
 
 ---
 
@@ -554,6 +557,19 @@ Options if you want it lower:
 - **Calendar header on two lines:** "September 2027" plus five controls didn't fit in one line of a 250 px-wide card.
 - **Shared functions for shared actions:** the tray item and the shortcut both call `toggle_lock()`; `events()` and `calendars()` both use `calendar_list()`.
 - **Settings apply by reloading** the widgets they affect, rather than redrawing in place: several modules read settings as they load, and a reload can't leave a widget half on the old values.
+- **Updates (0.6.0), why at all:** three releases went out on 2026-10-20, and each one meant every copy (including this PC's) had to be reinstalled by hand, so installed copies lagged behind. Now publishing a release is enough.
+- **Updates, why Tauri's updater:** it's the official plugin, works with the NSIS installer we already ship, and checks a signature before installing. A homemade "download the newest setup.exe" would have had no way to know the file really came from this repo.
+- **Updates, why signed:** without a signature, anyone who could swap the file (or the network in between) could make every copy install their program. The private key never leaves this PC and GitHub's secret store; the public key in `tauri.conf.json` lets the app check.
+- **Updates, why ask instead of updating silently:** installing closes the widgets for a few seconds, so the user picks the moment. "Later" just asks again tomorrow.
+- **Updates, why a minute after startup and then daily:** right after login Wi-Fi is often not connected yet, and the widgets run for days without restarting, so a startup-only check could miss a release for a long time.
+- **Updates, why a native message box:** no new window, page or permissions to build; `tauri-plugin-dialog` is a few lines from Rust. The tray item also changes to **Update to x.y.z…**, in case the box goes unnoticed.
+- **Updates, why passive install:** a small progress bar and no questions (the normal installer asks to confirm and has a Finish page). It also restarts the app afterwards.
+- **Releases built by GitHub Actions, why:** the build runs from the tagged commit on a clean machine, so the installer always matches the code on GitHub, and the signing key is used there instead of on whichever PC builds. It also took the build-and-upload steps off this laptop.
+- **Why a separate `tauri.release.conf.json`:** creating update signatures needs the private key. If that setting were in `tauri.conf.json`, every local `npm run tauri build` would fail without the key. It's not named `tauri.windows.conf.json`, because Tauri would merge that one into every Windows build.
+- **Why drafts:** the build makes a draft, so the notes can be written and `latest.json` checked before anyone is offered the update. Installed copies only see published releases.
+- **Why no password on the signing key:** one file to back up instead of a file plus a password, and nothing to type during builds. The file itself has to stay private either way.
+- **Why 0.6.0 and not 0.5.5:** it changes how the app is installed and kept up to date, and it's the line between "reinstall by hand" and "updates itself". 0.5.5 was only a local test version.
+- **How it was tested before release:** two local builds, a "0.5.4" that looked for updates at `http://127.0.0.1:8765/latest.json` (a test-only config, never committed) and a signed "0.5.5" served from this PC with `python -m http.server`. The 0.5.4 found the update, installed it and restarted itself as 0.5.5, with the widgets back in place. The release config was also built from a fresh clone, as GitHub would. That 0.5.5 then updated itself to the real 0.6.0 from GitHub.
 - **Learning approach:** later features were built partly by hand (typing the change, then a line-by-line review) to learn Rust and Tauri, not just copy code.
 
 ---
