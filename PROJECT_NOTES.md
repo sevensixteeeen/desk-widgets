@@ -33,7 +33,8 @@ Everything important about how this project works, why it's built this way, and 
 - **Browse months** with ‹ ›, or the mouse wheel over the dates; **Today** jumps back.
 - **Add events** from the desktop: click a day or **+**, pick which calendar, and leave the time empty for an all-day event.
 - **Settings window** (tray → Settings…): clock face with live previews of all six, second hand, 12/24-hour time, week start, °C/°F, now-playing style and the size of every widget. Changes apply right away.
-- **Tray menu:** Show widgets (tick/untick each one), Settings…, Lock widgets, Open at login, Quit.
+- **Updates itself:** a minute after it starts, and once a day, it looks for a new version on GitHub and asks before installing it. The widgets close for a few seconds and come back where they were. Tray → **Check for updates…** looks right away.
+- **Tray menu:** Show widgets (tick/untick each one), Settings…, Check for updates…, Lock widgets, Open at login, Quit.
 - **Ctrl+Alt+L** locks/unlocks dragging from anywhere, with a brief "Locked"/"Unlocked" message.
 - **Drag to move.** Positions are remembered.
 - **Everything you set up survives a restart** (sizes, added clocks, weather city, positions), even when Windows shuts down without the app being quit.
@@ -68,6 +69,7 @@ Options considered and rejected: **Electron** (too heavy for always-on widgets) 
 │   ├─ wallpaper.rs  → reads the current wallpaper file                    │
 │   ├─ settings.rs   → saved settings (lock, hidden widgets)               │
 │   ├─ store.rs      → saved widget setup (sizes, clocks, city)            │
+│   ├─ update.rs     → looks for a new version on GitHub, installs it      │
 │   └─ lib.rs        → commands, tray menu, shortcut, plugins, Win+D fix   │
 │                                                                          │
 │  4 windows (WebView2), all loading src/index.html                        │
@@ -92,6 +94,7 @@ Options considered and rejected: **Electron** (too heavy for always-on widgets) 
 
 ```
 desk-widgets/
+├─ .github/workflows/release.yml  Builds, signs and drafts a release when a v* tag is pushed
 ├─ src/                         Frontend
 │  ├─ index.html                Shared page for every widget window
 │  ├─ settings.html             The settings window (+ settings.js, settings.css)
@@ -111,7 +114,8 @@ desk-widgets/
 │     ├─ weather.js
 │     └─ calendar.js
 ├─ src-tauri/
-│  ├─ tauri.conf.json           Window definitions, app identifier, bundle config
+│  ├─ tauri.conf.json           Window definitions, app identifier, bundle config, updater (address + public key)
+│  ├─ tauri.release.conf.json   Added on top for releases only: just the setup.exe, plus its update signature
 │  ├─ Cargo.toml                Rust dependencies
 │  ├─ capabilities/             Which Tauri APIs each window's JS may use (default.json: widgets, settings-window.json)
 │  ├─ icons/                    App icons (generated with `npx tauri icon`)
@@ -122,7 +126,8 @@ desk-widgets/
 │     ├─ gcal.rs
 │     ├─ wallpaper.rs
 │     ├─ settings.rs
-│     └─ store.rs
+│     ├─ store.rs
+│     └─ update.rs
 ├─ screenshots/                README images (preview.png, the main one, sits at the top level)
 ├─ .gitignore
 ├─ README.md
@@ -266,6 +271,14 @@ Two ways in, one function: the tray's **Lock widgets** item and the global short
 
 `tauri-plugin-autostart` adds or removes the app in the Windows startup list. Tray → **Open at login**. Turn it on in the **installed** app only; in dev mode it would register the temporary debug build.
 
+### Updates (`update.rs`, `.github/workflows/release.yml`)
+
+- **Where it looks:** `tauri.conf.json → plugins.updater.endpoints`, which is `releases/latest/download/latest.json` on GitHub. `latest.json` names the newest version, the installer's address and its signature. GitHub's "latest" skips drafts, so a release only reaches people once it's published.
+- **When:** `check_daily()` waits a minute after startup (Wi-Fi is often still connecting after login), then checks once a day, because the widgets stay open for days. Tray → **Check for updates…** (`check_now()`) checks right away and, unlike the daily check, also says "You have the latest version" or why it failed. `BUSY` stops the two from asking at once. When an update is found, the tray item changes to **Update to x.y.z…**, in case the dialog went unnoticed.
+- **Installing:** "Install / Later" is a native message box (`tauri-plugin-dialog`). On Install, widget positions and sizes are saved first (the installer ends the app without quitting it, so the window-state plugin's save at quit never runs). Then the plugin downloads the installer, checks its signature against `plugins.updater.pubkey`, and runs it in passive mode (`installMode`): a small progress bar, no questions, and it opens the app again when it's done. Saved setup in `%APPDATA%` isn't touched.
+- **Signing:** each release's `setup.exe` is signed with the private key at `C:\Users\HARSHIT\.tauri\desk-widgets.key`, which GitHub has as the secret `TAURI_SIGNING_PRIVATE_KEY` (no password). The app refuses an update whose signature doesn't match, so nobody else can push one, even with a copy of the installer. **If the key is lost**, installed copies can never update again: you'd need a new key, a release with the new public key, and everyone reinstalling by hand. Keep a backup outside the repo; never commit it.
+- **Building:** pushing a `v*` tag runs `release.yml` on GitHub's Windows machines. It builds with `--config src-tauri/tauri.release.conf.json`, which adds `createUpdaterArtifacts` (the `.sig`) and limits the bundle to NSIS. It then makes a **draft** release with the setup.exe, its `.sig` and `latest.json`. Local `npm run tauri build` doesn't use that file, so it works without the key.
+
 ---
 
 ## 7. Design system
@@ -328,6 +341,8 @@ Two ways in, one function: the tray's **Lock widgets** item and the global short
 | Widget positions and sizes | `%APPDATA%\com.deskwidgets.app\.window-state.json` (window-state plugin) | No |
 | Weather city, added clocks, widget sizes, last calendar used, settings-window choices (`config`) | `%APPDATA%\com.deskwidgets.app\widgets.json` | No |
 | Theme cache | WebView `localStorage` | No |
+| Update signing key (private) | `C:\Users\HARSHIT\.tauri\desk-widgets.key` + a backup; GitHub secret `TAURI_SIGNING_PRIVATE_KEY` | **Never** |
+| Update signing key (public) | `tauri.conf.json → plugins.updater.pubkey` (also `desk-widgets.key.pub`) | Yes |
 
 - Dev mode and the installed app share the files in `%APPDATA%`, so they show the same clocks, sizes and city. Only the theme cache is separate (`localStorage` is per origin: `127.0.0.1:1430` in dev, `tauri.localhost` installed).
 - `.gitignore` blocks `node_modules/`, `src-tauri/target/`, `src-tauri/gen/`, `google_client.json`, `google_token.json`, `client_secret*.json`, `.env*`, `settings.json`, and editor clutter. That `settings.json` rule matches the name in any folder, which is why the settings window's capability file is called `settings-window.json`.
@@ -393,17 +408,19 @@ cargo fmt              # (inside src-tauri) format Rust code
 3. Run it. On **"Windows protected your PC"** (the app isn't code-signed), click **More info → Run anyway**.
 4. Tray → tick **Open at login**.
 
-**Updating:** change the code → build → run the new installer (it replaces the old one).
+**Trying a change on your own PC:** change the code → `npm run tauri build` → run the new installer (it replaces the old one). Don't publish that installer: it has no update signature.
 
-**Publishing a release:**
+**Publishing a release** (GitHub builds it; see Updates in §6):
 
 1. Bump `version` in **three** places: `package.json`, `src-tauri/Cargo.toml`, `src-tauri/tauri.conf.json`.
-2. Commit and push everything first, so `git status` is clean. Then `npm run tauri build`. Building from the pushed commit means the installer matches the tag exactly.
-3. Create the release with a tag like `v0.3.0`, say what changed, and attach only `src-tauri\target\release\bundle\nsis\Desk Widgets_<version>_x64-setup.exe`. Either:
-   - On GitHub: **Releases → Draft a new release**, or
-   - With the GitHub CLI: `gh release create v0.3.0 "src-tauri/target/release/bundle/nsis/Desk Widgets_0.3.0_x64-setup.exe" --target <commit sha> --title "Desk Widgets 0.3.0" --notes-file notes.md`
-4. GitHub renames the space in the file name to a dot (`Desk.Widgets_0.3.0_x64-setup.exe`), so release notes should say "the file ending in `x64-setup.exe`" rather than the exact name.
-5. The README's Download link always points to the newest release (`/releases/latest`), so it never needs editing.
+2. Commit and push.
+3. Tag the commit and push the tag: `git tag v0.6.0`, then `git push origin v0.6.0`. GitHub Actions builds the installer (about 10 minutes the first time; watch it in the repo's **Actions** tab) and makes a **draft** release with `Desk.Widgets_<version>_x64-setup.exe`, its `.sig` and `latest.json`.
+4. Write the notes and publish the draft: on GitHub (**Releases → the draft → Edit → Publish release**) or `gh release edit v0.6.0 --notes-file notes.md --draft=false --latest`.
+5. Publishing is what updates people: installed copies (0.6.0 and later) find it within a day, or right away with **Check for updates…**.
+6. GitHub renames the space in the file name to a dot (`Desk.Widgets_0.6.0_x64-setup.exe`), so release notes should say "the file ending in `x64-setup.exe`" rather than the exact name.
+7. The README's Download link always points to the newest release (`/releases/latest`), so it never needs editing.
+
+If the build fails, fix it, delete the tag (`git tag -d v0.6.0`, `git push origin :refs/tags/v0.6.0`) and the draft, and tag again.
 
 Don't run `npm run tauri dev` while the installed app is open, or you'll get two sets of widgets.
 
@@ -491,7 +508,9 @@ Each person's calendar data goes directly between their PC and Google; nobody el
 - Hidden widgets keep running in the background (their windows are hidden, not closed).
 - Widgets only scale evenly; you can't make one wider without making it taller.
 - When the wallpaper changes, each of the 4 widgets asks Rust separately, so Rust decodes it 4 times (about 16 ms each). Caching the result in Rust would make it once.
-- The installer is **unsigned**, so SmartScreen shows a warning on install.
+- The installer is **unsigned**, so SmartScreen shows a warning on install. (The update signature is a different thing: it proves an update came from this repo, but Windows doesn't know about it.)
+- Versions before 0.6.0 can't update themselves; they need one last manual install.
+- The update downloads silently before the installer's progress bar appears, so on a slow connection nothing seems to happen for a few seconds after clicking Install.
 - Adding a clock by place name needs internet (zone IDs like `UTC` or `Asia/Tokyo` don't). Once added, clocks work offline.
 - When the clock grows, widgets it covers are moved out of the way, but they don't move back when it shrinks again.
 - Adding a clock city still takes the search's first match (the weather city has a picker). It rarely matters: places sharing a name are usually in the same time zone, though the 24-hour face's sunrise would be for the wrong one.
@@ -558,10 +577,10 @@ Options if you want it lower:
 | 2026-10-20 | Widgets open at their saved size instead of jumping to it after startup (the window-state plugin remembers sizes too) |
 | 2026-10-20 | The moon is drawn the right way round for clocks south of the equator |
 | 2026-10-20 | v0.5.4: weather city list, no size jump at startup, southern moon; released on GitHub |
+| 2026-10-22 | Updates itself: checks GitHub at startup and daily, tray → Check for updates…, signed updates installed in passive mode. Releases are built by GitHub Actions on a version tag |
 
 ## 20. Ideas for later
 
-- Build releases automatically with GitHub Actions (`tauri-action`): push a version tag, and GitHub's Windows machines build the installer and attach it to the Release.
 - Poll now-playing less often if CPU use matters.
 - Use it for a few days and note what's missing, before adding new widgets.
 
@@ -577,7 +596,7 @@ Not planned right now; these notes are here so the thinking isn't lost.
 - Google OAuth verification (`calendar.events` is a sensitive scope; unverified apps are capped at 100 users).
 - Open-Meteo's free tier is non-commercial; a paid app needs their commercial plan or another provider.
 - Code-signing or Microsoft Store distribution, so there's no SmartScreen warning.
-- Auto-updates (Tauri updater plugin).
+- ~~Auto-updates (Tauri updater plugin).~~ Done (2026-10-22).
 - Testing on Windows 10, multiple monitors and different display scaling.
 - Don't market it as a "Spotify widget" (trademark); say "works with any music app".
 

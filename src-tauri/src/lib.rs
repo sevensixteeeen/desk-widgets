@@ -2,6 +2,7 @@ mod gcal;
 mod media;
 mod settings;
 mod store;
+mod update;
 mod wallpaper;
 
 use tauri::{
@@ -234,6 +235,9 @@ pub fn run() {
                 .with_denylist(&["settings"])
                 .build(),
         )
+        // Updates from GitHub Releases (update.rs), and the dialogs that offer them.
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             // Widgets have no taskbar button, so the tray icon is the control panel.
             let saved = settings::load(app.handle());
@@ -267,12 +271,14 @@ pub fn run() {
             let autostart =
                 CheckMenuItem::with_id(app, "autostart", "Open at login", true, starts_at_login, None::<&str>)?;
             let settings = MenuItem::with_id(app, "settings", "Settings…", true, None::<&str>)?;
+            let update = MenuItem::with_id(app, "update", "Check for updates…", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit widgets", true, None::<&str>)?;
             let menu = Menu::with_items(
                 app,
                 &[
                     &widgets_menu,
                     &settings,
+                    &update,
                     &PredefinedMenuItem::separator(app)?,
                     &lock,
                     &autostart,
@@ -284,6 +290,7 @@ pub fn run() {
             // The closure below needs its own handles to update the checkmarks.
             let lock_item = lock.clone();
             let autostart_item = autostart.clone();
+            let update_item = update.clone();
             TrayIconBuilder::new()
                 .icon(app.default_window_icon().cloned().expect("app icon missing"))
                 .tooltip("Desk widgets")
@@ -301,6 +308,7 @@ pub fn run() {
 
                     match id {
                         "settings" => open_settings(app),
+                        "update" => update::check_now(app, &update_item),
                         "lock" => toggle_lock(app, &lock_item),
                         "autostart" => {
                             let launcher = app.autolaunch();
@@ -317,6 +325,8 @@ pub fn run() {
                     }
                 })
                 .build(app)?;
+
+            update::check_daily(app.handle(), update);
 
             let changed = save_state_after_changes(app.handle());
             for window in app.webview_windows().values() {

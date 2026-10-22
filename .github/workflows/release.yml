@@ -1,0 +1,46 @@
+# Builds the installer on GitHub's Windows machines when a version tag (v0.5.5) is pushed, signs it
+# for the updater, and attaches it to a draft release with latest.json, the file installed apps
+# read to find new versions (src-tauri/src/update.rs). Publishing the draft makes it the update.
+# Steps: PROJECT_NOTES.md → "Publishing a release".
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write # create the release and upload to it
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      # Keeps compiled dependencies between runs: about 3 minutes instead of 10+.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - run: npm ci
+
+      - uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # The private half of tauri.conf.json → plugins.updater.pubkey. Without it the build fails.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: Desk Widgets __VERSION__
+          releaseDraft: true
+          updaterJsonPreferNsis: true
+          # Only the setup.exe, plus its .sig for the updater (local builds skip both).
+          args: --config src-tauri/tauri.release.conf.json

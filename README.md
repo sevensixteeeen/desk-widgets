@@ -16,6 +16,8 @@ Desktop widgets for Windows: an analog world clock, now playing, weather, and Go
 
 **Works right away:** clock, now playing and weather (type your city once). The **calendar** needs a one-time Google setup, described [below](#connect-google-calendar-optional).
 
+**Updates:** from 0.6.0 on, the app checks for new versions by itself and asks before installing one. Older versions need this one last manual install; your widgets keep their positions, sizes and clocks.
+
 **Uninstall:** Settings → Apps → Installed apps → Desk Widgets.
 
 ## Features
@@ -28,7 +30,8 @@ Desktop widgets for Windows: an analog world clock, now playing, weather, and Go
 - **Stays on the desktop:** behind your apps, and still visible after Win+D.
 - **Resizable:** make any widget bigger or smaller; each one remembers its size.
 - **Settings window:** pick the clock face (with live previews), second hand, 12/24-hour time, the week's first day, °C/°F, the now-playing style and the size of every widget. Changes show up right away.
-- **Tray menu:** Show widgets (hide the ones you don't want), Settings, Lock widgets (stops accidental dragging), Open at login, Quit.
+- **Updates itself:** checks for a new version once a day and asks before installing it. The widgets come back where they were.
+- **Tray menu:** Show widgets (hide the ones you don't want), Settings, Check for updates, Lock widgets (stops accidental dragging), Open at login, Quit.
 - **Ctrl+Alt+L** locks/unlocks the widgets from anywhere.
 
 ## How it looks
@@ -55,6 +58,7 @@ Desktop widgets for Windows: an analog world clock, now playing, weather, and Go
 - **Jump to a point in the song:** click or drag the arc around the record.
 - **Change the weather city:** click the city name and type a new one. If several places share the name, pick yours from the list, which shows each one's district, state and country.
 - **Add a clock for another country:** click **+** on the clock and type a city or country (e.g. Tokyo, Dubai, Japan). Point at a clock and click **×** to remove it.
+- **Update now:** tray → **Check for updates…**.
 - **Quit:** tray → **Quit widgets**.
 
 ## Connect Google Calendar (optional)
