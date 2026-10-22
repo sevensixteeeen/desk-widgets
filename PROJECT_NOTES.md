@@ -578,6 +578,7 @@ Options if you want it lower:
 | 2026-10-20 | The moon is drawn the right way round for clocks south of the equator |
 | 2026-10-20 | v0.5.4: weather city list, no size jump at startup, southern moon; released on GitHub |
 | 2026-10-22 | Updates itself: checks GitHub at startup and daily, tray → Check for updates…, signed updates installed in passive mode. Releases are built by GitHub Actions on a version tag |
+| 2026-10-22 | v0.6.0: updates itself; the first release built by GitHub Actions |
 
 ## 20. Ideas for later
 
