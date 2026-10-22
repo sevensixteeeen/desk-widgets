@@ -422,6 +422,15 @@ cargo fmt              # (inside src-tauri) format Rust code
 
 If the build fails, fix it, delete the tag (`git tag -d v0.6.0`, `git push origin :refs/tags/v0.6.0`) and the draft, and tag again.
 
+**Before publishing, fix the download link in the draft's `latest.json`:** tauri-action points it at GitHub's API address for the asset, which allows only 60 unauthenticated requests an hour per network. Download `latest.json` from the draft, change both `url`s to `https://github.com/sevensixteeeen/desk-widgets/releases/download/v<version>/Desk.Widgets_<version>_x64-setup.exe`, and `gh release upload v<version> latest.json --clobber`.
+
+**Setting the signing-key secret again** (new PC, new key): pass the key as an argument. Piping it in Windows PowerShell 5.1 adds an invisible BOM, and the build then fails with "failed to decode base64 secret key: Invalid symbol 239, offset 0".
+
+```powershell
+$key = (Get-Content -Raw "$env:USERPROFILE\.tauri\desk-widgets.key").Trim()
+gh secret set TAURI_SIGNING_PRIVATE_KEY -R sevensixteeeen/desk-widgets --body $key
+```
+
 Don't run `npm run tauri dev` while the installed app is open, or you'll get two sets of widgets.
 
 **README images** (`preview.png`, `screenshots/`) are the browser preview with its sample data, not a real desktop: serve `src/` (`python -m http.server`), frame `index.html?w=clock&dial=…&zones=…&sky=…&wp=…` and `settings.html?wp=…` at their real sizes (design size × 0.78), and screenshot at 2× in headless Edge (`--force-device-scale-factor=2 --screenshot`). `?wp=` themes them from any image; the ones in `screenshots/themes.jpg` are generated gradients, not someone's artwork.
