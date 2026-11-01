@@ -7,13 +7,15 @@ import { mountClock } from "./widgets/clock.js";
 import { mountNowPlaying } from "./widgets/nowplaying.js";
 import { mountWeather } from "./widgets/weather.js";
 import { mountCalendar } from "./widgets/calendar.js";
+import { mountLyrics } from "./widgets/lyrics.js";
 
 // uses: the config.js settings each widget reads besides scale, so it reloads only when one of them changes.
 const widgets = {
   clock: { mount: mountClock, uses: ["clockStyle", "clockSeconds", "hour12"] }, // no size: it grows with the clocks you add
-  nowplaying: { mount: mountNowPlaying, size: config.nowPlayingStyle === "card" ? [380, 150] : [380, 230], uses: ["nowPlayingStyle"] }, // fixed size
+  nowplaying: { mount: mountNowPlaying, size: config.nowPlayingStyle === "card" ? [380, 150] : [380, 230], uses: ["nowPlayingStyle", "nowPlayingLyrics"] }, // fixed size
   weather: { mount: mountWeather, size: [380, 220], uses: ["temperatureUnit"] },
   calendar: { mount: mountCalendar, size: [320, 490], uses: ["hour12", "weekStartsOn", "upcomingEvents"] },
+  lyrics: { mount: mountLyrics, size: [360, 260], uses: [] },
 };
 const widget = widgets[widgetName];
 

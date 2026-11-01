@@ -23,7 +23,8 @@ Desktop widgets for Windows: an analog world clock, now playing, weather, and Go
 ## Features
 
 - **Clock:** a dial for your time and any cities or countries you add, light by day and dark by night, with how far ahead or behind each one is. The default 24-hour face shades each city's real night, from sunset to sunrise, and shows its weather by day (sun, cloud, rain...) and tonight's moon, in its real phase, at night. Five other faces to choose from in Settings.
-- **Now playing:** a turntable for whatever is playing in Spotify, YouTube in Chrome, or any app that reports media to Windows. The record spins while music plays, the album cover is its centre label, and the tonearm moves inward as the song goes on. Shows whether it's playing from Spotify or YouTube, and the full song name. Play/pause/skip, and click or drag the arc around the record to jump anywhere in the song (in apps that let Windows control playback position). No Spotify login needed.
+- **Now playing:** a turntable for whatever is playing in Spotify, YouTube in Chrome, or any app that reports media to Windows. The record spins while music plays, the album cover is its centre label, and the tonearm moves inward as the song goes on. Shows whether it's playing from Spotify or YouTube, and the full song name. Play/pause/skip, and click or drag the arc around the record to jump anywhere in the song (in apps that let Windows control playback position). No Spotify login needed. Can also show the lyrics line being sung for Spotify songs (Settings → Now playing).
+- **Lyrics:** the words of the song playing on Spotify, following along line by line, from [LRCLIB](https://lrclib.net) (free, no account). Starts hidden: turn it on from the tray.
 - **Weather:** current conditions and the next 6 hours, from [Open-Meteo](https://open-meteo.com) (no API key).
 - **Calendar:** month view (browse with ‹ › or the mouse wheel) with events from every calendar ticked in your Google Calendar. The list under it follows the month on screen: upcoming events for this month, that month's events when you browse to another. Click a day or **+** to add an event to whichever calendar you choose.
 - **Themed from your wallpaper:** colours are pulled from your current wallpaper and update when you change it.
@@ -54,6 +55,7 @@ Desktop widgets for Windows: an analog world clock, now playing, weather, and Go
 - **Resize a widget:** drag the round grip in its bottom-right corner (it appears when you point at the widget, and for a few seconds after you unlock) to set its width and height. Hold **Shift** while dragging, or hold **Ctrl** and scroll the mouse wheel over it, to make it bigger or smaller all over. Double-click the grip to go back to the default size. Locked widgets can't be resized: unlock with **Ctrl+Alt+L**.
 - **Lock them in place:** tray → **Lock widgets**, or **Ctrl+Alt+L** from anywhere.
 - **Hide a widget:** tray → **Show widgets** → untick it.
+- **Spotify lyrics:** tray → **Show widgets** → tick **Lyrics** for the lyrics widget, and/or Settings → Now playing → **Spotify lyrics** for the current line on the turntable. Only Spotify songs are looked up; LRCLIB sees the song's title and artist.
 - **Change settings:** tray → **Settings…**. Only the widgets a change affects reload; **Reset to defaults** undoes everything.
 - **Jump to a point in the song:** click or drag the arc around the record.
 - **Change the weather city:** click the city name and type a new one. If several places share the name, pick yours from the list, which shows each one's district, state and country.
@@ -90,15 +92,17 @@ src/                   Frontend (plain HTML/CSS/JS, no bundler)
   resize.js            Resize grip (stretch, or Shift to scale) and Ctrl + wheel; remembers each widget's size
   theme.js             Turns the wallpaper into a colour palette
   api.js               Talks to Rust, or returns sample data in a normal browser
+  lyrics.js            Spotify lyrics as timed lines, for the lyrics widget and Now playing
   styles.css           Design system and all widget styles
   widgets/*.js         One file per widget
 src-tauri/
-  tauri.conf.json      The 4 widget windows: start position, frameless, pinned to desktop
+  tauri.conf.json      The 5 widget windows: start position, frameless, pinned to desktop
   src/lib.rs           Commands exposed to JS, tray menu, plugins, Win+D fix
   src/media.rs         Now playing (Windows media session API)
+  src/lyrics.rs        Song lyrics from LRCLIB, kept on disk
   src/gcal.rs          Google sign-in, reading and adding events
   src/wallpaper.rs     Reads and shrinks the current wallpaper
-  src/settings.rs      Saved settings (lock, hidden widgets)
+  src/settings.rs      Saved settings (lock, hidden widgets, widgets that start hidden)
 ```
 
 ### Build from source

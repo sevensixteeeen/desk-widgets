@@ -1,5 +1,6 @@
-import { invoke } from "../api.js";
+import { invoke, isShown } from "../api.js";
 import { config } from "../config.js";
+import { isSpotify, loadLyrics, lineAt, LEAD_MS } from "../lyrics.js";
 
 const icons = {
   prev: '<svg viewBox="0 0 16 16"><path d="M3 2h2v12H3zM14 2v12L6 8z"/></svg>',
@@ -54,7 +55,7 @@ export function mountNowPlaying(root) {
   let track = null;   // last answer from Rust
   let receivedAt = 0; // when we got it, to keep things moving between polls
   let trackKey = "";
-
+  let lyrics = null;  // the song's timed lyrics, when Settings → Now playing → Spotify lyrics is on
 
   async function poll() {
     try {
@@ -69,6 +70,7 @@ export function mountNowPlaying(root) {
       trackKey = key;
       view.setTrack(track);
       loadArt(); // cover art is only fetched when the song changes
+      findLyrics(key);
     }
     // Only some apps let other programs move their position; Windows tells us which.
     view.setSeekable(Boolean(track?.canSeek && track.durationMs));
@@ -84,6 +86,15 @@ export function mountNowPlaying(root) {
     setTimeout(poll, 400); // then check where the player really ended up
   }
 
+  // The line being sung, for Spotify songs (lyrics.js). Only timed lyrics: plain words can't follow along.
+  async function findLyrics(key) {
+    lyrics = null;
+    view.setLyric(null);
+    if (!config.nowPlayingLyrics || !isSpotify(track) || !(await isShown())) return;
+    const found = await loadLyrics(track, () => trackKey === key);
+    if (trackKey === key && found?.synced) lyrics = found;
+  }
+
   async function loadArt() {
     const src = track ? await invoke("media_thumbnail").catch(() => null) : null;
     view.setArt(src);
@@ -95,6 +106,10 @@ export function mountNowPlaying(root) {
     const elapsed = track.playing ? performance.now() - receivedAt : 0;
     const pos = Math.min(track.positionMs + elapsed, track.durationMs || Infinity);
     view.setProgress(pos, track.durationMs, track.playing);
+    if (lyrics) {
+      const line = lyrics.lines[lineAt(lyrics.lines, pos + LEAD_MS)];
+      view.setLyric(line ? line.text || "♪" : null); // before the singing starts: the app label as usual
+    }
   }
 
   view.controls.addEventListener("click", async (e) => {
@@ -165,10 +180,24 @@ function turntableView(root, seek) {
       </svg>
 
       <svg class="tt-arm" viewBox="0 0 332 190" aria-hidden="true">
+        <!-- Metal: light down the middle, darker at the edges, like a polished cylinder. In the
+             arm's own units, so the shine turns with it. -->
+        <defs>
+          <linearGradient id="tt-metal-tube" gradientUnits="userSpaceOnUse" x1="${p.x - 2}" x2="${p.x + 2}">
+            <stop offset="0" stop-color="#8f949b" /><stop offset="0.45" stop-color="#f2f3f5" /><stop offset="1" stop-color="#7d828a" />
+          </linearGradient>
+          <linearGradient id="tt-metal-weight" gradientUnits="userSpaceOnUse" x1="${p.x - 7}" x2="${p.x + 7}">
+            <stop offset="0" stop-color="#6f747b" /><stop offset="0.4" stop-color="#d9dce0" /><stop offset="1" stop-color="#5e6369" />
+          </linearGradient>
+          <radialGradient id="tt-metal-base" gradientUnits="userSpaceOnUse" cx="${p.x - 4}" cy="${p.y - 4}" r="17">
+            <stop offset="0" stop-color="#eceef1" /><stop offset="0.7" stop-color="#a3a8ae" /><stop offset="1" stop-color="#6d7279" />
+          </radialGradient>
+        </defs>
         <g class="tt-arm-swing">
           <rect class="tt-weight" x="${p.x - 7}" y="${p.y - 27}" width="14" height="15" rx="3" />
           <line class="tt-tube" x1="${p.x}" y1="${p.y - 12}" x2="${p.x}" y2="${p.y + L - 14}" />
           <rect class="tt-head" x="${p.x - 5}" y="${p.y + L - 16}" width="10" height="17" rx="2" />
+          <rect class="tt-head-mark" x="${p.x - 5}" y="${p.y + L - 4}" width="10" height="2" />
         </g>
         <circle class="tt-base" cx="${p.x}" cy="${p.y}" r="13" />
         <circle class="tt-hub" cx="${p.x}" cy="${p.y}" r="4.5" />
@@ -183,6 +212,7 @@ function turntableView(root, seek) {
           <span class="tt-eq" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
           <span class="tt-source-text"><small>Playing on</small><b></b></span>
         </div>
+        <p class="tt-lyric"></p>
         <p class="tt-time"></p>
         <div class="tt-controls">${controlsHtml}</div>
       </div>
@@ -194,6 +224,7 @@ function turntableView(root, seek) {
     artist: $(".tt-artist"), time: $(".tt-time"), arm: $(".tt-arm-swing"), toggle: $('[data-action="toggle"]'),
     played: $(".tt-ring-played"), dot: $(".tt-ring-dot"), ring: $(".tt-ring"), hit: $(".tt-ring-hit"),
     source: $(".tt-source"), sourceName: $(".tt-source b"), sourceState: $(".tt-source small"),
+    lyric: $(".tt-lyric"),
   };
 
   /** Shows the whole song name: starts big and steps the font down until it fits its box. */
@@ -299,6 +330,12 @@ function turntableView(root, seek) {
   return {
     controls: $(".tt-controls"),
 
+    // The lyric line (null: none) replaces the app label while there is one.
+    setLyric(text) {
+      el.tt.classList.toggle("has-lyric", text !== null);
+      if (text !== null && el.lyric.textContent !== text) el.lyric.textContent = text;
+    },
+
     setSeekable(yes) {
       el.tt.classList.toggle("can-seek", yes);
     },
@@ -337,6 +374,7 @@ function cardView(root, seek) {
       <div class="np-art"><img alt="" hidden><span class="glyph">♪</span></div>
       <div class="np-body">
         <p class="np-source"><i></i><span></span></p>
+        <p class="np-lyric"></p>
         <p class="np-title">Nothing playing</p>
         <p class="np-artist">${EMPTY_HINT}</p>
         <div class="np-bar" data-no-drag><span></span></div>
@@ -362,6 +400,11 @@ function cardView(root, seek) {
 
   return {
     controls: $(".np-controls"),
+
+    setLyric(text) {
+      el.np.classList.toggle("has-lyric", text !== null);
+      if (text !== null && $(".np-lyric").textContent !== text) $(".np-lyric").textContent = text;
+    },
 
     setSeekable(yes) {
       el.np.classList.toggle("can-seek", yes);

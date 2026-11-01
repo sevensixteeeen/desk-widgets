@@ -24,6 +24,7 @@ const sections = [
   ]],
   ["Now playing", [
     { key: "nowPlayingStyle", label: "Style", choices: [["turntable", "Turntable"], ["card", "Card"]] },
+    { key: "nowPlayingLyrics", label: "Spotify lyrics", choices: [[false, "Off"], [true, "On"]] },
   ]],
   ["Size", [
     { key: "scale", label: "All widgets", size: true },

@@ -13,7 +13,7 @@ const STRETCH_KEY = `stretch.${widgetName}`; // [width, height] in full-size px 
 const MIN = 0.6, MAX = 1.8;
 // How far below its design size each widget can be squeezed, as a share of that size. The clock and
 // the turntable have fixed geometry, so they only grow; the weather and calendar cards can give a little.
-const SQUEEZE = { weather: 0.15, calendar: 0.15 }[widgetName] ?? 0;
+const SQUEEZE = { weather: 0.15, calendar: 0.15, lyrics: 0.25 }[widgetName] ?? 0;
 const MAX_GROW = 1; // up to twice the design size each way
 const WHEEL_STEP = 0.0005; // one mouse-wheel notch (deltaY 100) = about 5%
 const gripIcon = '<svg viewBox="0 0 10 10" aria-hidden="true"><path d="M8.6 1.4 9.6 2.4 2.4 9.6 1.4 8.6zM8.6 5.4 9.6 6.4 6.4 9.6 5.4 8.6z"/></svg>';

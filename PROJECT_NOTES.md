@@ -65,14 +65,15 @@ Options considered and rejected: **Electron** (too heavy for always-on widgets) 
 │                                                                          │
 │  Rust core (src-tauri/src)                                               │
 │   ├─ media.rs      → Windows media session (now playing, controls, seek) │
+│   ├─ lyrics.rs     → song lyrics from LRCLIB, kept on disk               │
 │   ├─ gcal.rs       → Google sign-in, list calendars, read/add events     │
 │   ├─ wallpaper.rs  → reads the current wallpaper file                    │
-│   ├─ settings.rs   → saved settings (lock, hidden widgets)               │
+│   ├─ settings.rs   → saved settings (lock, hidden/shown widgets)         │
 │   ├─ store.rs      → saved widget setup (sizes, clocks, city)            │
 │   ├─ update.rs     → looks for a new version on GitHub, installs it      │
 │   └─ lib.rs        → commands, tray menu, shortcut, plugins, Win+D fix   │
 │                                                                          │
-│  4 windows (WebView2), all loading src/index.html                        │
+│  5 windows (WebView2), all loading src/index.html                        │
 │   clock │ nowplaying │ weather │ calendar                                │
 │   main.js reads the window's *label* and mounts that widget              │
 │                                                                          │
@@ -104,6 +105,7 @@ desk-widgets/
 │  ├─ api.js                    invoke / events / window helpers (resizeWindow applies scale) + sample data for browser preview
 │  ├─ config.js                 Default settings; merges the settings window's choices on top at startup
 │  ├─ theme.js                  Wallpaper → colour palette
+│  ├─ lyrics.js                 Spotify lyrics as timed lines; which one is being sung
 │  ├─ styles.css                Design system and all widget styles
 │  ├─ fonts/jost.woff2          Bundled variable font (+ licence)
 │  └─ widgets/
@@ -111,6 +113,7 @@ desk-widgets/
 │     ├─ dials.js        the six clock faces (pick one with clockStyle)
 │     ├─ sky.js          weather icons, weather codes, moon phase
 │     ├─ nowplaying.js
+│     ├─ lyrics.js
 │     ├─ weather.js
 │     └─ calendar.js
 ├─ src-tauri/
@@ -123,6 +126,7 @@ desk-widgets/
 │     ├─ main.rs                Entry point (hides the console in release builds)
 │     ├─ lib.rs
 │     ├─ media.rs
+│     ├─ lyrics.rs
 │     ├─ gcal.rs
 │     ├─ wallpaper.rs
 │     ├─ settings.rs
@@ -198,7 +202,8 @@ Two ways in, one function: the tray's **Lock widgets** item and the global short
 - Tray → **Show widgets** submenu, one tickbox per widget. The list lives in one constant, `WIDGETS` (label + menu name), so a new widget is a one-line addition.
 - Menu item ids are `show:<label>` (e.g. `show:weather`). The click handler uses `strip_prefix("show:")`, so one piece of code handles every widget.
 - `toggle_widget()` calls `window.hide()` / `window.show()` and keeps the list of hidden labels in `settings.json` (`"hidden": ["weather"]`), so the choice survives restarts.
-- Hidden widgets are hidden, not closed: their pages keep running in the background.
+- Hidden widgets are hidden, not closed: their pages keep running in the background. The lyrics widget checks `isShown()` (`api.js`) before every poll, so while hidden it asks nothing of Windows or LRCLIB.
+- **Widgets that start hidden** (`STARTS_HIDDEN` in `settings.rs`, so far only `lyrics`): a new widget would otherwise appear on everyone's desktop after an update, since only hidden labels are listed. These are listed in `shown` once you turn them on instead. `is_hidden()` / `set_hidden()` hide the difference from `lib.rs`.
 
 ### Settings window (`settings.js`, `config.js`, `lib.rs → open_settings`)
 
@@ -233,13 +238,23 @@ Two ways in, one function: the tray's **Lock widgets** item and the global short
 - **Which app:** Windows gives each media session an app ID (`Spotify.exe`, `Chrome`, `MSEdge`...). `sourceOf()` turns it into a name: Spotify, YouTube for browsers and the installed YouTube / YouTube Music apps, otherwise a cleaned-up app name.
 - **Full song name:** the title wraps instead of being cut off; `fitTitle()` starts at 17px and steps the font down until it fits its box. The full name is also the hover tooltip.
 - **Two views,** picked by `nowPlayingStyle` in `config.js`. The data side (polling, controls, seeking) is shared; each view only draws.
-  - `"turntable"` (default, 380×230 before scaling): the album art is the record's centre label. The record spins (CSS, 33⅓ rpm) only while playing. The tonearm is parked when paused, lowers onto the record when playing, and creeps from the outer groove (18°) towards the label (35°) as the song goes on. A progress arc runs around the top of the record, with a dot at the current position. The arm angles and arc are worked out in the SVG's own 332×190 units (`ARM` and `RING` in `nowplaying.js`), and the CSS positions match them.
+  - `"turntable"` (default, 380×230 before scaling): the album art is the record's centre label. The record spins (CSS, 33⅓ rpm) only while playing. The tonearm is parked when paused, lowers onto the record when playing, and creeps from the outer groove (18°) towards the label (35°) as the song goes on. A progress arc runs around the top of the record, with a dot at the current position. The arm angles and arc are worked out in the SVG's own 332×190 units (`ARM` and `RING` in `nowplaying.js`), and the CSS positions match them. Materials (0.8.0): the platter shows a brushed-metal rim around the record (a `conic-gradient`), the arm, counterweight and pivot are polished metal (SVG gradients in the arm's own units, so the shine turns with it), and the headshell is graphite. The theme's accent stays small: the arc's dot, a thin line on the headshell, the bar beside the lyric. The arc and the play button use the text colour, so the turntable looks right on light and dark wallpapers.
   - `"card"` (the original compact design, 380×150): square album art, a progress bar, and the controls.
 - **Seeking:** Windows reports per app whether outside controls may move the position; Rust passes that on as `canSeek`, and the arc (or bar) only reacts when it's true.
   - Turntable: click or drag the arc. Pointer capture keeps the drag going if the mouse slips off the thin arc, and a wide invisible stroke on top of it is what you actually grab. The seek is sent only when you let go, not on every pixel.
   - Card: click anywhere on the bar.
   - JS jumps the widget straight away, calls `media_seek`, then re-polls after 400 ms to see where the player really ended up.
   - Rust calls `TryChangePlaybackPositionAsync`, measured from the timeline's `StartTime` (it isn't always 0). It returns `false` if the app refuses.
+
+### Lyrics (`lyrics.rs`, `lyrics.js`, `widgets/lyrics.js`)
+
+- **Where from:** [LRCLIB](https://lrclib.net), free, no key, most songs with every line's time (LRC: `[01:02.50] words`). Spotify's own lyrics come from Musixmatch under licence and aren't available to other apps (the unofficial way needs your Spotify login cookie, against their terms). Only songs playing on Spotify (`app` contains "spotify") are looked up; LRCLIB sees their title, artist, album and length.
+- **Finding a song** (Rust, `lyrics_get`): first `/api/get` with title, artist, album and length in seconds, which LRCLIB matches exactly. If that's a 404, `/api/search` with the plain title (cut at " - " or " (", so "Kesariya (From Brahmastra)" finds "Kesariya") and the first artist, keeping results within 3 s of the song's length and preferring timed lyrics. Sends a `User-Agent` with the app's name and version, as LRCLIB asks.
+- **Kept:** found lyrics are saved as `lyrics\<FNV-1a hash>.json` in `%LOCALAPPDATA%\com.deskwidgets.app\` and remembered in memory (`SEEN`), so the second window asking for the same song, or a song played again, makes no request. "Not found" is remembered only until the app closes. Errors (offline, LRCLIB answering 503, which happened for over an hour on 2026-11-01) aren't remembered: `loadLyrics()` (`lyrics.js`) tries again every 30 s while the same song plays.
+- **Following along:** `parseSynced()` turns LRC into `{ms, text}` lines; `lineAt()` finds the one being sung at the position plus 250 ms (`LEAD_MS`), since Spotify reports its position a little late. The position is worked out between polls the same way as in Now playing.
+- **The widget** (360×260): the song name on top, then the lines, slid up with a CSS transform so the current one sits a little above the middle; the edges fade (`mask-image`). Only opacity changes between lines, so nothing re-wraps as the song moves. A taller card shows more lines without any fitting code. Lyrics without times scroll along by how far through the song it is, with nothing highlighted. It polls Windows itself every 1.5 s.
+- **In Now playing** (Settings → Now playing → Spotify lyrics, `nowPlayingLyrics`, off by default): with timed lyrics, the current line replaces the "Playing on" label (turntable, up to two lines) or the app label above the title (card), in the accent colour. Before the first line it shows the label as usual.
+- **Tested** on 2026-11-01 with a song playing on Spotify: the highlighted line matched the LRC times (118.8 s into the song: the line starting at 118.5 s), both windows showed the same line, and one file was saved for both. Tauri freezes `window.__TAURI__`, so commands can't be faked from the DevTools console.
 
 ### Weather (`weather.js`)
 
@@ -304,7 +319,7 @@ Two ways in, one function: the tray's **Lock widgets** item and the global short
 | `--paper-solid` | Same colour, opaque (text on accent fills) |
 | `--ink` | Main text and the big numbers |
 | `--muted` | Secondary text |
-| `--accent-a` | Ink A: buttons, today, the progress arc, the tonearm's head |
+| `--accent-a` | Ink A: buttons, today; on the turntable only small touches (the progress arc's dot, the line on the headshell, the bar beside the lyric) |
 | `--accent-b` | Ink B: weather bars, event dots, record label background, focus rings |
 | `--blend` | Still set by `theme.js` (`multiply` on light, `screen` on dark), but no style uses it since the off-register numbers were removed |
 | `--rule` | Hairlines (ink at 15%) |
@@ -618,6 +633,9 @@ Options if you want it lower:
 | 2026-10-22 | Updates itself: checks GitHub at startup and daily, tray → Check for updates…, signed updates installed in passive mode. Releases are built by GitHub Actions on a version tag |
 | 2026-10-22 | v0.6.0: updates itself; the first release built by GitHub Actions |
 | 2026-11-01 | v0.7.0: set each widget's width and height separately; a bigger card shows more (forecast days, more hours and events, bigger clocks and turntable); a bigger grip that shows after unlocking |
+| 2026-11-01 | Spotify lyrics from LRCLIB: a lyrics widget (starts hidden) and the current line in Now playing (Settings, off by default) |
+| 2026-11-01 | A classier turntable: metal platter rim and tonearm, the arc and buttons in the text colour, the accent only in small touches |
+| 2026-11-01 | v0.8.0: Spotify lyrics, classier turntable |
 
 ## 20. Ideas for later
 

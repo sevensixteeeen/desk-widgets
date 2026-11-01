@@ -272,10 +272,11 @@ button:focus-visible, input:focus-visible {
   transform-origin: 0 50%; transform: translateY(-50%) scale(var(--deck, 1));
 }
 
+/* The platter: its brushed-metal rim shows around the record. */
 .tt-platter {
   position: absolute; left: 6px; top: 9px; width: 172px; height: 172px; border-radius: 50%;
-  background: color-mix(in srgb, var(--ink) 10%, var(--paper-solid));
-  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent-a) 55%, transparent), 0 6px 18px rgb(0 0 0 / 0.28);
+  background: conic-gradient(from 200deg, #6c7178, #c9ccd1, #80858c, #e3e5e8, #737880, #b9bdc2, #6c7178);
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.35), 0 10px 26px rgb(0 0 0 / 0.34), 0 2px 5px rgb(0 0 0 / 0.25);
 }
 /* Light reflecting off the vinyl. It sits above the record and doesn't spin, like real glare. */
 .tt-platter::after {
@@ -286,8 +287,12 @@ button:focus-visible, input:focus-visible {
 
 .tt-record {
   position: absolute; inset: 4px; border-radius: 50%;
-  /* Grooves: thin alternating rings of two near-blacks. */
-  background: repeating-radial-gradient(circle, #121216 0 1.4px, #1c1c22 1.4px 2.8px);
+  /* Grooves: thin alternating rings of two near-blacks, with a smooth lead-out band near the
+     label and a rim at the edge, like a pressed record. */
+  background:
+    radial-gradient(circle, transparent 0 39%, rgb(255 255 255 / 0.045) 39.5% 41%, transparent 41.5% 96%, rgb(255 255 255 / 0.06) 97%, transparent 99%),
+    repeating-radial-gradient(circle, #111114 0 1.2px, #1a1a1f 1.2px 2.4px);
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.6);
   animation: tt-spin 1.8s linear infinite paused; /* 33⅓ rpm = one turn every 1.8 s */
 }
 .tt.is-playing .tt-record { animation-play-state: running; }
@@ -297,26 +302,28 @@ button:focus-visible, input:focus-visible {
 .tt-label {
   position: absolute; left: 50%; top: 50%; width: 56px; height: 56px; margin: -28px 0 0 -28px;
   border-radius: 50%; overflow: hidden; background: var(--accent-b);
+  box-shadow: 0 0 0 2px #0d0d10, 0 0 0 3px rgb(255 255 255 / 0.07); /* a pressed ring around the label */
 }
 .tt-label img { width: 100%; height: 100%; object-fit: cover; } /* the real cover, untouched */
 .tt-label .glyph { position: absolute; inset: 0; display: grid; place-items: center; z-index: 1; color: var(--paper-solid); font-weight: 300; font-size: 22px; }
 .tt-spindle {
   position: absolute; left: 50%; top: 50%; width: 6px; height: 6px; margin: -3px 0 0 -3px; z-index: 2;
-  border-radius: 50%; background: var(--paper-solid); box-shadow: 0 0 0 1px rgb(0 0 0 / 0.4);
+  border-radius: 50%; background: radial-gradient(circle at 35% 35%, #f4f5f7, #9a9fa6 70%, #6b7077);
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.45);
 }
 
 /* Progress arc around the top of the record (see RING in nowplaying.js). */
 .tt-ring { position: absolute; left: 0; top: 0; width: 332px; height: 190px; overflow: visible; pointer-events: none; }
-.tt-ring path { fill: none; stroke-width: 4; stroke-linecap: round; }
+.tt-ring path { fill: none; stroke-width: 2.5; stroke-linecap: round; }
 .tt-ring-track { stroke: var(--rule); }
-.tt-ring-played { stroke: var(--accent-a); }
-.tt-ring-dot { fill: var(--accent-a); stroke: var(--paper-solid); stroke-width: 2; }
+.tt-ring-played { stroke: color-mix(in srgb, var(--ink) 80%, transparent); }
+.tt-ring-dot { fill: var(--accent-a); stroke: var(--paper-solid); stroke-width: 2; r: 4; }
 .tt.is-empty .tt-ring { visibility: hidden; }
 /* Seeking: a wide invisible stroke on top of the arc is what you actually grab. */
 .tt-ring .tt-ring-hit { stroke: transparent; stroke-width: 20; pointer-events: none; }
 .tt.can-seek .tt-ring-hit { pointer-events: stroke; cursor: pointer; }
 .tt.can-seek .tt-ring-dot { transition: r .15s; }
-.tt.can-seek .tt-ring:hover .tt-ring-dot, .tt.is-seeking .tt-ring-dot { r: 6; }
+.tt.can-seek .tt-ring:hover .tt-ring-dot, .tt.is-seeking .tt-ring-dot { r: 5.5; }
 .tt.is-seeking .tt-arm-swing { transition: none; }
 .np.can-seek .np-bar { cursor: pointer; }
 
@@ -328,18 +335,20 @@ button:focus-visible, input:focus-visible {
   transition: transform 0.9s cubic-bezier(0.3, 0.7, 0.3, 1);
   filter: drop-shadow(0 3px 2px rgb(0 0 0 / 0.35));
 }
-.tt-tube { stroke: var(--ink); stroke-width: 3.5; stroke-linecap: round; }
-.tt-weight { fill: color-mix(in srgb, var(--ink) 55%, var(--paper-solid)); }
-.tt-head { fill: var(--accent-a); }
-.tt-base { fill: var(--paper-solid); stroke: color-mix(in srgb, var(--ink) 25%, transparent); stroke-width: 2; }
-.tt-hub { fill: var(--accent-b); }
+/* Polished metal (gradients in nowplaying.js), a graphite headshell with a thin accent line. */
+.tt-tube { stroke: url(#tt-metal-tube); stroke-width: 3; stroke-linecap: round; }
+.tt-weight { fill: url(#tt-metal-weight); }
+.tt-head { fill: #2b2c31; stroke: rgb(255 255 255 / 0.12); stroke-width: 0.75; }
+.tt-head-mark { fill: var(--accent-a); }
+.tt-base { fill: url(#tt-metal-base); stroke: rgb(0 0 0 / 0.35); stroke-width: 1; }
+.tt-hub { fill: #2b2c31; }
 
 .tt-side {
   position: absolute; left: calc(218px * var(--deck, 1)); right: 0; top: 0; bottom: 0;
   display: flex; flex-direction: column; gap: 3px; min-width: 0; padding-top: 4px;
 }
 /* The song name wraps instead of being cut off; nowplaying.js shrinks the font until it fits this box. */
-.tt-title { font-size: 17px; font-weight: 700; line-height: 1.2; max-height: calc(62px + var(--spare-h, 0px) / 2); overflow: hidden; overflow-wrap: break-word; flex-shrink: 0; }
+.tt-title { font-size: 17px; font-weight: 600; line-height: 1.2; letter-spacing: -0.01em; max-height: calc(62px + var(--spare-h, 0px) / 2); overflow: hidden; overflow-wrap: break-word; flex-shrink: 0; }
 .tt-artist {
   font-size: 13px; color: var(--muted); overflow: hidden;
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; /* at most two lines */
@@ -375,15 +384,30 @@ button:focus-visible, input:focus-visible {
 .np-source.is-spotify i { background: #1ed760; }
 .np-source.is-youtube i { background: #ff3b3b; }
 .tt.is-empty .tt-source, .np.is-empty .np-source { display: none; }
+
+/* Spotify lyrics (Settings → Now playing): the line being sung takes the app label's place. */
+.tt-lyric, .np-lyric { display: none; }
+.tt.has-lyric .tt-source, .np.has-lyric .np-source { display: none; }
+/* Set like a quote: the text colour, with a thin accent line beside it. */
+.tt.has-lyric .tt-lyric {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; /* two lines at most */
+  margin: auto 0; padding-left: 10px; border-left: 2px solid var(--accent-a);
+  font-size: 13.5px; font-weight: 500; line-height: 1.35; color: color-mix(in srgb, var(--ink) 88%, transparent);
+}
+.np.has-lyric .np-lyric {
+  display: block; font-size: 12px; font-weight: 650; color: var(--accent-a);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .tt.is-empty .tt-time { margin-top: auto; } /* nothing above it to push it down */
-.tt-time { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.tt-time { font-size: 11.5px; letter-spacing: 0.03em; color: var(--muted); font-variant-numeric: tabular-nums; }
 
 .tt-controls { display: flex; align-items: center; gap: 4px; margin-top: 6px; }
-.tt-controls button { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; color: var(--accent-a); }
-.tt-controls button:hover { background: var(--rule); }
-.tt-controls [data-action="toggle"] { background: var(--accent-a); color: var(--paper-solid); }
-.tt-controls [data-action="toggle"]:hover { filter: brightness(1.12); }
-.tt-controls svg { width: 16px; height: 16px; fill: currentColor; }
+.tt-controls button { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; color: color-mix(in srgb, var(--ink) 70%, transparent); transition: color 0.15s, background 0.15s; }
+.tt-controls button:hover { color: var(--ink); background: var(--rule); }
+.tt-controls [data-action="toggle"] { background: var(--ink); color: var(--paper-solid); box-shadow: 0 3px 10px rgb(0 0 0 / 0.25); }
+.tt-controls [data-action="toggle"]:hover { background: var(--accent-a); color: var(--paper-solid); }
+.tt-controls svg { width: 14px; height: 14px; fill: currentColor; }
+.tt-controls [data-action="toggle"] svg { width: 15px; height: 15px; }
 .tt.is-empty .tt-time, .tt.is-empty .tt-controls { visibility: hidden; }
 
 @media (prefers-reduced-motion: reduce) {
@@ -514,3 +538,27 @@ button:focus-visible, input:focus-visible {
 .cal-form-msg { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } /* one line; full text on hover */
 .cal-pick { align-items: center; }
 .cal-pick .cal-dot { flex: none; width: 9px; height: 9px; margin: 0 2px 0 4px; vertical-align: 0; }
+
+/* ---------- Lyrics (widgets/lyrics.js) ---------- */
+.ly { display: flex; flex-direction: column; gap: 10px; height: 100%; }
+.ly-song { display: flex; align-items: center; gap: 6px; min-height: 18px; font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; }
+.ly-song i { flex: none; width: 7px; height: 7px; border-radius: 50%; background: #1ed760; } /* Spotify green */
+.ly-song b { color: var(--ink); font-weight: 650; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0; max-width: 70%; }
+.ly-song span { overflow: hidden; text-overflow: ellipsis; }
+/* The lines slide up as the song goes on; the edges fade so they come and go softly. */
+.ly-view {
+  position: relative; flex: 1; min-height: 0; overflow: hidden;
+  mask-image: linear-gradient(transparent, #000 20%, #000 80%, transparent);
+}
+.ly-lines { position: relative; transition: transform 0.55s cubic-bezier(0.3, 0.7, 0.3, 1); }
+.ly-line {
+  padding: 5px 0; font-size: 20px; font-weight: 700; line-height: 1.25; letter-spacing: -0.01em;
+  color: var(--ink); opacity: 0.32; overflow-wrap: break-word; transition: opacity 0.3s;
+}
+.ly-line.is-past { opacity: 0.16; }
+.ly-line.is-now { opacity: 1; }
+.ly.is-plain .ly-line { opacity: 0.6; }
+/* Messages (finding, none found, Spotify only) sit in the middle, unfaded. */
+.ly.is-note .ly-view { display: grid; align-items: center; mask-image: none; }
+.ly-note { font-size: 14px; color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { .ly-lines, .ly-line { transition: none; } }

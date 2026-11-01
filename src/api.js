@@ -101,6 +101,11 @@ export async function makeRoom() {
   }
 }
 
+/** Whether this widget is on screen (hidden widgets keep running; see the tray's Show widgets). */
+export async function isShown() {
+  return !inTauri || tauri.window.getCurrentWindow().isVisible();
+}
+
 /** Tell every widget window something (they hear it with onEvent). */
 export function emitEvent(name, payload) {
   if (inTauri) tauri.event.emit(name, payload);
@@ -149,6 +154,16 @@ function sample(command, args) {
     get_settings: { locked: false },
     wallpaper: null,
     gcal_disconnect: null,
+    lyrics_get: {
+      synced: [
+        "[01:08.00] Streetlights counting down the miles", "[01:13.50] Radio low, the windows wide",
+        "[01:19.00] Every song we used to know", "[01:24.50] Playing back the summer slow",
+        "[01:30.00] ", "[01:34.00] Hold on, hold on to the night drive", "[01:40.00] Nowhere else we need to be",
+        "[01:46.00] Hold on, hold on, the road is ours", "[01:52.00] Till the morning finds you and me",
+      ].join("\n"),
+      plain: null,
+      instrumental: false,
+    },
   };
   return Promise.resolve(data[command] ?? null);
 }

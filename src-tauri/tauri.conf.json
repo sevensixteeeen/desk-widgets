@@ -75,6 +75,22 @@
         "resizable": false,
         "skipTaskbar": true,
         "alwaysOnBottom": true
+      },
+      {
+        "label": "lyrics",
+        "visible": false,
+        "title": "Lyrics",
+        "url": "index.html",
+        "width": 281,
+        "height": 203,
+        "x": 560,
+        "y": 155,
+        "decorations": false,
+        "transparent": true,
+        "shadow": false,
+        "resizable": false,
+        "skipTaskbar": true,
+        "alwaysOnBottom": true
       }
     ]
   },

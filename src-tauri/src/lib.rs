@@ -1,4 +1,5 @@
 mod gcal;
+mod lyrics;
 mod media;
 mod settings;
 mod store;
@@ -23,6 +24,17 @@ use tauri_plugin_window_state::{AppHandleExt, StateFlags};
 #[tauri::command]
 async fn media_now_playing() -> Result<Option<media::NowPlaying>, String> {
     tauri::async_runtime::spawn_blocking(media::now_playing).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn lyrics_get(
+    app: AppHandle,
+    title: String,
+    artist: String,
+    album: String,
+    duration_ms: i64,
+) -> Result<Option<lyrics::Lyrics>, String> {
+    lyrics::get(&app, &title, &artist, &album, duration_ms).await
 }
 
 #[tauri::command]
@@ -151,9 +163,11 @@ fn save_state_after_changes(app: &AppHandle) -> mpsc::Sender<()> {
 // ---------- Show / hide widgets ----------
 
 /// Every widget window: (label in tauri.conf.json, name shown in the tray menu).
-const WIDGETS: [(&str, &str); 4] = [
+/// Lyrics starts hidden (settings::STARTS_HIDDEN).
+const WIDGETS: [(&str, &str); 5] = [
     ("clock", "Clock"),
     ("nowplaying", "Now playing"),
+    ("lyrics", "Lyrics"),
     ("weather", "Weather"),
     ("calendar", "Calendar"),
 ];
@@ -163,14 +177,9 @@ fn toggle_widget(app: &AppHandle, label: &str, item: &CheckMenuItem<Wry>) {
     let Some(window) = app.get_webview_window(label) else { return };
     let mut s = settings::load(app);
 
-    let was_hidden = s.hidden.iter().any(|h| h == label);
-    if was_hidden {
-        s.hidden.retain(|h| h != label); // keep every entry except this one
-        let _ = window.show();
-    } else {
-        s.hidden.push(label.to_string());
-        let _ = window.hide();
-    }
+    let was_hidden = s.is_hidden(label);
+    s.set_hidden(label, !was_hidden);
+    let _ = if was_hidden { window.show() } else { window.hide() };
 
     let _ = settings::save(app, &s);
     let _ = item.set_checked(was_hidden); // it was hidden -> now shown -> ticked
@@ -246,7 +255,7 @@ pub fn run() {
             let widgets_menu = Submenu::new(app, "Show widgets", true)?;
             let mut widget_items = Vec::new(); // (label, menu item), used by the click handler
             for (label, name) in WIDGETS {
-                let shown = !saved.hidden.iter().any(|h| h == label);
+                let shown = !saved.is_hidden(label);
                 let item = CheckMenuItem::with_id(app, format!("show:{label}"), name, true, shown, None::<&str>)?;
                 widgets_menu.append(&item)?;
                 widget_items.push((label, item));
@@ -350,7 +359,7 @@ pub fn run() {
                 });
 
                 // Windows start hidden (tauri.conf.json), so hidden widgets never flash on screen.
-                if !saved.hidden.iter().any(|h| h == window.label()) {
+                if !saved.is_hidden(window.label()) {
                     let _ = window.show();
                 }
             }
@@ -359,6 +368,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             media_now_playing,
+            lyrics_get,
             media_thumbnail,
             media_control,
             media_seek,

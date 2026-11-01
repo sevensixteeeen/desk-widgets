@@ -9,6 +9,7 @@ export const defaults = {
   temperatureUnit: "celsius", // or "fahrenheit"
   upcomingEvents: 3,      // how many events the calendar lists (not in Settings: more don't fit the card)
   nowPlayingStyle: "turntable", // or "card" for the original compact design
+  nowPlayingLyrics: false, // the line being sung, for Spotify songs (lyrics.js); there's also a Lyrics widget
 };
 
 /** Settings-window choices on top of the defaults. Unknown keys and values of the wrong type are ignored. */
