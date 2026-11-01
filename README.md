@@ -28,7 +28,7 @@ Desktop widgets for Windows: an analog world clock, now playing, weather, and Go
 - **Calendar:** month view (browse with ‹ › or the mouse wheel) with events from every calendar ticked in your Google Calendar. The list under it follows the month on screen: upcoming events for this month, that month's events when you browse to another. Click a day or **+** to add an event to whichever calendar you choose.
 - **Themed from your wallpaper:** colours are pulled from your current wallpaper and update when you change it.
 - **Stays on the desktop:** behind your apps, and still visible after Win+D.
-- **Resizable:** make any widget bigger or smaller; each one remembers its size.
+- **Resizable:** set any widget's width and height, or make it bigger or smaller all over; each one remembers its size. A bigger card shows more: more hours and a few days of forecast, more events, bigger clocks and turntable.
 - **Settings window:** pick the clock face (with live previews), second hand, 12/24-hour time, the week's first day, °C/°F, the now-playing style and the size of every widget. Changes show up right away.
 - **Updates itself:** checks for a new version once a day and asks before installing it. The widgets come back where they were.
 - **Tray menu:** Show widgets (hide the ones you don't want), Settings, Check for updates, Lock widgets (stops accidental dragging), Open at login, Quit.
@@ -51,7 +51,7 @@ Desktop widgets for Windows: an analog world clock, now playing, weather, and Go
 ## Using it
 
 - **Move a widget:** drag it. Positions are remembered.
-- **Resize a widget:** drag the small grip in its bottom-right corner (it appears when you point at the widget), or hold **Ctrl** and scroll the mouse wheel over it. Double-click the grip to go back to the default size.
+- **Resize a widget:** drag the round grip in its bottom-right corner (it appears when you point at the widget, and for a few seconds after you unlock) to set its width and height. Hold **Shift** while dragging, or hold **Ctrl** and scroll the mouse wheel over it, to make it bigger or smaller all over. Double-click the grip to go back to the default size. Locked widgets can't be resized: unlock with **Ctrl+Alt+L**.
 - **Lock them in place:** tray → **Lock widgets**, or **Ctrl+Alt+L** from anywhere.
 - **Hide a widget:** tray → **Show widgets** → untick it.
 - **Change settings:** tray → **Settings…**. Only the widgets a change affects reload; **Reset to defaults** undoes everything.
@@ -87,7 +87,7 @@ src/                   Frontend (plain HTML/CSS/JS, no bundler)
   config.js            Default settings: size, 12/24h, week start, °C/°F, clock face, now-playing style
   settings.*           The settings window (tray → Settings…), saved on top of those defaults
   main.js              Picks the widget for each window; size, drag and lock
-  resize.js            Resize grip and Ctrl + wheel; remembers each widget's size
+  resize.js            Resize grip (stretch, or Shift to scale) and Ctrl + wheel; remembers each widget's size
   theme.js             Turns the wallpaper into a colour palette
   api.js               Talks to Rust, or returns sample data in a normal browser
   styles.css           Design system and all widget styles

@@ -99,7 +99,7 @@ desk-widgets/
 │  ├─ index.html                Shared page for every widget window
 │  ├─ settings.html             The settings window (+ settings.js, settings.css)
 │  ├─ main.js                   Widget selection, size (zoom), drag, lock
-│  ├─ resize.js                 Resize grip, Ctrl + wheel, each widget's saved size
+│  ├─ resize.js                 Resize grip (stretch / Shift to scale), Ctrl + wheel, each widget's saved size
 │  ├─ store.js                  Saved sizes, clocks, city, last calendar (widgets.json via Rust)
 │  ├─ api.js                    invoke / events / window helpers (resizeWindow applies scale) + sample data for browser preview
 │  ├─ config.js                 Default settings; merges the settings window's choices on top at startup
@@ -152,11 +152,24 @@ Widgets are designed at full size. The page gets CSS `zoom: scale`, and `resizeW
 
 ### Resize (`resize.js`)
 
-- **Why scaling, not free resizing:** the designs have fixed geometry (the turntable's arm angles, the clock's `CELL` sizes), so a widget grows and shrinks evenly instead of changing shape.
-- **Saved per widget** in `widgets.json` as `size.<label>` (e.g. `size.calendar`): a factor on top of `config.scale`, where 1 = default, clamped to 0.6–1.8. `main.js` calls `restoreSize()` *before* mounting the widget, so the clock's first self-resize already uses it.
-- **Grip:** bottom-right corner, shown while you point at the widget. It lives on `<body>`, outside the card, so widgets that redraw their card can't remove it, and it doesn't start a window drag. Dragging uses pointer capture, and every move is measured from a snapshot taken at `pointerdown` (screen position + window size), because the grip itself moves under the pointer as the zoom changes. The new size averages how much wider and how much taller the drag would make the window, so dragging along either edge works. Moves are applied once per animation frame. Double-click resets to 100%.
+Two kinds of size, both per widget:
+
+- **Stretch** (drag the grip): width and height separately. Saved as `stretch.<label>`, `[width, height]` in full-size px added to the design size (`setStretch()` in `api.js`), so the window is `(design size + stretch) × scale`. The card gets more or less room; text and dials keep their size, and each widget fills the room itself (see **Filling a stretched card** below). Limits: up to twice the design size each way; the weather and calendar cards can also shrink 15% (`SQUEEZE`), the clock and the turntable can't, because their geometry is fixed. A drag is converted from screen px to full-size px by dividing by the current zoom.
+- **Scale** (**Shift** + drag the grip, or Ctrl + wheel): everything grows and shrinks evenly. Saved as `size.<label>` (e.g. `size.calendar`): a factor on top of `config.scale`, where 1 = default, clamped to 0.6–1.8.
+- `main.js` calls `restoreSize()` *before* mounting the widget, so the clock's first self-resize already uses both.
+- **Grip:** a 26 px round button in the bottom-right corner, shown while you point at the widget and for 4 s after unlocking (`just-unlocked` on `<body>`, set in `main.js`), so it can be found. Its `zoom: var(--unzoom)` cancels the page zoom (`setScale()` sets `--unzoom` to 1 / scale), so it's the same size on every widget; before 0.7.0 it shrank with the zoom to about 6 px on a small widget. It lives on `<body>`, outside the card, so widgets that redraw their card can't remove it, and it doesn't start a window drag. Dragging uses pointer capture, and every move is measured from a snapshot taken at `pointerdown` (screen position, window size, and whether **Shift** is held, which picks scale over stretch), because the grip itself moves under the pointer as the window changes. A scale drag averages how much wider and how much taller the drag would make the window, so dragging along either edge works. Moves are applied once per animation frame. Double-click resets both, to the design size at 100%.
 - **Ctrl + mouse wheel:** a `window` listener in the capture phase (`passive: false`), so it runs before the calendar's own wheel handler (which flips months) and can cancel it. The factor is multiplied by `exp(-deltaY × 0.0005)`: about 5% per mouse notch, and smooth for touchpad pinches, which arrive as many small Ctrl+wheel events.
-- **When a resize ends** (pointer released, or 300 ms after the last wheel event): save the factor, `makeRoom()` so a bigger widget pushes others out of the way, and show the size as a toast ("110%", relative to the default).
+- **When a resize ends** (pointer released, or 300 ms after the last wheel event): save the factor and the stretch (a stretch of 0 × 0 removes the key), `makeRoom()` so a bigger widget pushes others out of the way, and show the size as a toast: "110%" after scaling, the window's size ("460 × 220") after stretching.
+
+### Filling a stretched card
+
+Each widget fills extra room itself, so nothing is saved for it: a `ResizeObserver` on the card runs a `fit()` (once per animation frame), which measures and lays out again. Measurements use `offsetWidth` / `clientWidth`, which come back in the page's own full-size px, the same units as the CSS (`getBoundingClientRect()` comes back zoomed).
+
+- **Weather:** one hourly column per 56 px of width (6 at the normal width, up to 24). In a taller card, a daily forecast (tomorrow onwards, up to 6 days) goes between the temperature and the hours: all the days are drawn, then removed from the end while the card overflows. Height still spare after that makes the bars taller (`--bar-range`, 28 px plus up to 60). The forecast is fetched for 7 days for this.
+- **Calendar:** the events list shows as many as fit (up to 20), found the same way, by removing rows while the card overflows. The gap still left above the list (its `margin-top: auto`) is shared out over the grid's six weeks (`--day-h`, 32 px up to 54). `config.upcomingEvents` no longer limits the list.
+- **Clock:** tries every number of columns and keeps the one that lets the dials grow most (a tall card stacks them, a wide one lines them up), then sets the grid's `zoom` to fill the card. The window's own size still comes from `gridSize()` with three to a row.
+- **Now playing, turntable:** the record, progress arc and arm sit in `.tt-deck`, still drawn for 332 × 190, and grow by `--deck` (to the card's height, as far as the width allows while leaving the song info its 114 px). The song info starts right of the deck and takes all the width left, and half the extra height goes to the title's `max-height`. Seeking still works, because `fractionAt()` measures the arc's on-screen box.
+- **Now playing, card design:** CSS only. The card is a size container (`container-type: size`) and the cover is `clamp(106px, 100cqh - 4px, 42cqw)` wide.
 - **Lock** hides the grip and ignores Ctrl + wheel.
 
 ### Saved setup (`store.rs`, `store.js`)
@@ -604,6 +617,7 @@ Options if you want it lower:
 | 2026-10-20 | v0.5.4: weather city list, no size jump at startup, southern moon; released on GitHub |
 | 2026-10-22 | Updates itself: checks GitHub at startup and daily, tray → Check for updates…, signed updates installed in passive mode. Releases are built by GitHub Actions on a version tag |
 | 2026-10-22 | v0.6.0: updates itself; the first release built by GitHub Actions |
+| 2026-11-01 | v0.7.0: set each widget's width and height separately; a bigger card shows more (forecast days, more hours and events, bigger clocks and turntable); a bigger grip that shows after unlocking |
 
 ## 20. Ideas for later
 
