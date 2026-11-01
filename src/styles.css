@@ -71,18 +71,21 @@ body {
 @media (prefers-reduced-motion: reduce) { .toast { animation-name: toast-fade; } }
 @keyframes toast-fade { 0%, 100% { opacity: 0; transform: translate(-50%, -50%); } 15%, 75% { opacity: 1; transform: translate(-50%, -50%); } }
 
-/* Resize grip (resize.js), in the card's bottom-right padding. Shows while you point at the widget;
-   gone while locked. It's on <body>, outside the card, like the toast. */
+/* Resize grip (resize.js), in the card's bottom-right corner. Shows while you point at the widget,
+   and for a moment after unlocking so you can find it; gone while locked. It's on <body>, outside
+   the card, like the toast. --unzoom cancels the page zoom (api.js), so it's the same size on every widget. */
 .resize-grip {
-  position: fixed; right: 4px; bottom: 4px; z-index: 5; width: 18px; height: 18px;
+  position: fixed; right: 5px; bottom: 5px; z-index: 5; width: 26px; height: 26px;
   display: grid; place-items: center; border-radius: 50%;
-  color: var(--muted); cursor: nwse-resize; touch-action: none;
+  background: color-mix(in srgb, var(--ink) 14%, transparent);
+  color: var(--ink); cursor: nwse-resize; touch-action: none;
   opacity: 0; transition: opacity 0.15s;
+  zoom: var(--unzoom, 1);
 }
-body:hover .resize-grip { opacity: 0.7; }
-.resize-grip:hover, .resize-grip:active { opacity: 1; color: var(--ink); }
+body:hover .resize-grip, .just-unlocked .resize-grip { opacity: 0.85; }
+.resize-grip:hover, .resize-grip:active { opacity: 1; background: color-mix(in srgb, var(--accent-a) 40%, transparent); }
 .is-locked .resize-grip { display: none; }
-.resize-grip svg { width: 10px; height: 10px; fill: currentColor; }
+.resize-grip svg { width: 12px; height: 12px; fill: currentColor; }
 
 .card::before {
   content: "";
@@ -147,6 +150,7 @@ button:focus-visible, input:focus-visible {
   --night-face: color-mix(in srgb, var(--paper-solid) 65%, black);
   --night-hand: var(--ink);
 }
+.clock { height: 100%; display: grid; place-content: center; } /* centred in a stretched card */
 .clock-grid { display: grid; grid-template-columns: repeat(var(--cols), 132px); column-gap: 18px; row-gap: 14px; }
 .clock-zone { --face: var(--day-face); --hand: var(--day-hand); position: relative; height: 164px; display: flex; flex-direction: column; align-items: center; }
 .clock-zone.is-night { --face: var(--night-face); --hand: var(--night-hand); }
@@ -222,11 +226,13 @@ button:focus-visible, input:focus-visible {
 .clock-form .note { font-size: 12px; }
 
 /* ---------- Now playing ---------- */
-.np { display: grid; grid-template-columns: 106px 1fr; gap: 18px; height: 100%; align-items: center; }
+/* The card design's cover grows with a taller card (container units: the card's own size). */
+.card[data-widget="nowplaying"] { container-type: size; }
+.np { display: grid; grid-template-columns: auto 1fr; gap: 18px; height: 100%; align-items: center; }
 
 .np-art {
   position: relative;
-  width: 106px;
+  width: clamp(106px, 100cqh - 4px, 42cqw);
   aspect-ratio: 1;
   border-radius: 10px;
   overflow: hidden;
@@ -259,6 +265,12 @@ button:focus-visible, input:focus-visible {
 /* Content area is 332 x 190 (380 x 230 card minus padding); positions below match
    the tonearm geometry in nowplaying.js (record centre 92,95 · arm pivot 192,22). */
 .tt { position: relative; height: 100%; }
+/* Record, progress arc and arm, drawn for 332 x 190. In a stretched card nowplaying.js sets --deck
+   to grow them, and the song info (.tt-side) moves right to make room. */
+.tt-deck {
+  position: absolute; left: 0; top: 50%; width: 332px; height: 190px;
+  transform-origin: 0 50%; transform: translateY(-50%) scale(var(--deck, 1));
+}
 
 .tt-platter {
   position: absolute; left: 6px; top: 9px; width: 172px; height: 172px; border-radius: 50%;
@@ -323,11 +335,11 @@ button:focus-visible, input:focus-visible {
 .tt-hub { fill: var(--accent-b); }
 
 .tt-side {
-  position: absolute; left: 218px; right: 0; top: 0; bottom: 0;
+  position: absolute; left: calc(218px * var(--deck, 1)); right: 0; top: 0; bottom: 0;
   display: flex; flex-direction: column; gap: 3px; min-width: 0; padding-top: 4px;
 }
 /* The song name wraps instead of being cut off; nowplaying.js shrinks the font until it fits this box. */
-.tt-title { font-size: 17px; font-weight: 700; line-height: 1.2; max-height: 62px; overflow: hidden; overflow-wrap: break-word; flex-shrink: 0; }
+.tt-title { font-size: 17px; font-weight: 700; line-height: 1.2; max-height: calc(62px + var(--spare-h, 0px) / 2); overflow: hidden; overflow-wrap: break-word; flex-shrink: 0; }
 .tt-artist {
   font-size: 13px; color: var(--muted); overflow: hidden;
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; /* at most two lines */
@@ -341,7 +353,7 @@ button:focus-visible, input:focus-visible {
 .tt-source-text { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
 .tt-source small { font-size: 9px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
 /* Very long song names: the title gets two more lines and the label shrinks to just the app name. */
-.tt.is-long .tt-title { max-height: 82px; }
+.tt.is-long .tt-title { max-height: calc(82px + var(--spare-h, 0px) / 2); }
 .tt.is-long .tt-source small { display: none; }
 .tt.is-long .tt-eq { height: 12px; }
 .tt.is-long .tt-source b { font-size: 13px; }
@@ -389,10 +401,22 @@ button:focus-visible, input:focus-visible {
 .wx-city:hover { color: var(--ink); text-decoration: underline dotted; text-underline-offset: 3px; }
 .wx-feels { font-size: 13px; color: var(--muted); }
 
-.wx-hours { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; align-items: end; }
+.wx-hours { display: grid; grid-template-columns: repeat(var(--cols, 6), 1fr); gap: 6px; align-items: end; }
 .wx-hour { display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .wx-hour b { font-size: 14px; font-weight: 650; font-variant-numeric: tabular-nums; }
-.wx-hour i { display: block; width: 100%; max-width: 30px; border-radius: 3px 3px 0 0; background: var(--accent-b); }
+.wx-hour i {
+  display: block; width: 100%; max-width: 30px; border-radius: 3px 3px 0 0; background: var(--accent-b);
+  height: calc(6px + var(--f) * var(--bar-range, 28px)); /* weather.js sets both */
+}
+
+/* Daily forecast: only in a card tall enough for it (weather.js keeps the days that fit). */
+.wx-days { margin: 12px 0; display: flex; flex-direction: column; }
+.wx-day { display: grid; grid-template-columns: 84px minmax(0, 1fr) auto; gap: 10px; align-items: baseline; padding: 6px 0; font-size: 14px; }
+.wx-day + .wx-day { border-top: 1px solid var(--rule); }
+.wx-day-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wx-day-cond { color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wx-day-temp { color: var(--muted); font-variant-numeric: tabular-nums; }
+.wx-day-temp b { color: var(--ink); font-weight: 650; }
 .wx-hour small { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 
 .wx-form, .clock-form { display: flex; flex-direction: column; justify-content: center; gap: 10px; height: 100%; }
@@ -451,7 +475,7 @@ button:focus-visible, input:focus-visible {
 .cal-add svg { width: 14px; height: 14px; fill: currentColor; }
 
 .cal-day {
-  position: relative; height: 32px; display: grid; place-items: center;
+  position: relative; height: var(--day-h, 32px); display: grid; place-items: center; /* calendar.js makes it taller in a tall card */
   font-size: 14px; font-variant-numeric: tabular-nums; cursor: pointer;
 }
 .cal-day:disabled { cursor: inherit; color: inherit; }

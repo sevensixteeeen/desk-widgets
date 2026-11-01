@@ -149,6 +149,7 @@ function turntableView(root, seek) {
   const ringPath = `M ${a.x.toFixed(1)} ${a.y.toFixed(1)} A ${RING.r} ${RING.r} 0 0 1 ${b.x.toFixed(1)} ${b.y.toFixed(1)}`;
   root.innerHTML = `
     <div class="tt is-empty">
+      <div class="tt-deck">
       <div class="tt-platter">
         <div class="tt-record">
           <div class="tt-label"><img alt="" hidden><span class="glyph">♪</span></div>
@@ -172,6 +173,7 @@ function turntableView(root, seek) {
         <circle class="tt-base" cx="${p.x}" cy="${p.y}" r="13" />
         <circle class="tt-hub" cx="${p.x}" cy="${p.y}" r="4.5" />
       </svg>
+      </div>
 
       <div class="tt-side">
         <p class="tt-title">Nothing playing</p>
@@ -209,6 +211,24 @@ function turntableView(root, seek) {
     while (overflows() && size > 11) el.title.style.fontSize = `${--size}px`;
   }
   el.arm.style.transformOrigin = `${p.x}px ${p.y}px`; // swing around the pivot
+
+  // Fills a stretched card: the deck (record and arm) grows to the card's height, as far as the
+  // width allows, and the song info gets everything to its right, so longer names fit.
+  // Full-size px: the deck takes 218 of the 332 x 190 content area, the song info the other 114.
+  function fit() {
+    const { offsetWidth: w, offsetHeight: h } = el.tt;
+    const grow = Math.max(1, Math.min(h / 190, (w - 114) / 218));
+    el.tt.style.setProperty("--deck", grow.toFixed(3));
+    el.tt.style.setProperty("--spare-h", `${Math.max(0, h - 190)}px`); // the title may use some of it
+    fitTitle();
+  }
+  let frame = 0;
+  new ResizeObserver(() => {
+    frame ||= requestAnimationFrame(() => {
+      frame = 0;
+      fit();
+    });
+  }).observe(el.tt);
 
   let last = { pos: 0, duration: 0, playing: false }; // latest values from the data side
   let dragging = null; // while you're dragging the arc: where you are (0..1), otherwise null

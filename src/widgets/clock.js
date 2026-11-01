@@ -78,8 +78,35 @@ export function mountClock(root) {
     const grew = shownSize !== null && size !== shownSize;
     shownSize = size;
     resizeWindow(...gridSize()).then(() => grew && makeRoom());
+    fit();
     tick();
   }
+
+  // Fills a stretched card: tries every number of columns and keeps the one that lets the clocks
+  // grow the most (a tall card stacks them, a wide one lines them up), then zooms the grid to fill.
+  function fit() {
+    const box = root.querySelector(".clock");
+    if (!box) return; // the add form is open
+    const grid = box.querySelector(".clock-grid");
+    const n = cells.length;
+    let best = { cols: Math.min(n, PER_ROW), zoom: 1 }; // the normal layout, unless another fills more
+    for (let cols = 1; cols <= n; cols++) {
+      const rows = Math.ceil(n / cols);
+      const w = cols * CELL[0] + (cols - 1) * GAP[0];
+      const h = rows * CELL[1] + (rows - 1) * GAP[1];
+      const zoom = Math.min(box.clientWidth / w, box.clientHeight / h);
+      if (zoom > best.zoom + 0.01) best = { cols, zoom };
+    }
+    grid.style.setProperty("--cols", best.cols);
+    grid.style.zoom = best.zoom;
+  }
+  let frame = 0;
+  new ResizeObserver(() => {
+    frame ||= requestAnimationFrame(() => {
+      frame = 0;
+      fit();
+    });
+  }).observe(root);
 
   function gridSize() {
     const n = zones.length + 1;

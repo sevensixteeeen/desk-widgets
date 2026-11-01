@@ -50,10 +50,15 @@ widget.mount(root);
 
 // ---- Drag + lock ----
 let locked = false;
+let unlockedTimer = 0;
 function setLocked(value, announce = false) {
   locked = value;
   document.body.classList.toggle("is-locked", value); // CSS swaps the cursor
   if (announce) showToast(value ? "Locked" : "Unlocked");
+  // Just unlocked: show the resize grips for a few seconds, so you can see where they are.
+  clearTimeout(unlockedTimer);
+  document.body.classList.toggle("just-unlocked", announce && !value);
+  if (announce && !value) unlockedTimer = setTimeout(() => document.body.classList.remove("just-unlocked"), 4000);
 }
 if (inTauri) {
   invoke("get_settings").then((s) => setLocked(s.locked)); // at startup: no toast

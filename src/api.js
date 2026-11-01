@@ -19,12 +19,16 @@ export function startDrag() {
 // amount. It starts at config.scale; resize.js changes it per widget.
 let scale = config.scale;
 let designSize = null; // the full-size [width, height] the widget last asked for
+let stretch = [0, 0];   // full-size px you've added to (or taken off) its width and height; resize.js sets it
 
-/** Sizes the window for a widget designed at width x height; `scale` shrinks it like the page zoom. */
+/** Sizes the window for a widget designed at width x height, plus your stretch; `scale` shrinks it like the page zoom. */
 export async function resizeWindow(width, height) {
   designSize = [width, height];
   if (!inTauri) return;
-  const size = new tauri.dpi.LogicalSize(Math.round(width * scale), Math.round(height * scale));
+  const size = new tauri.dpi.LogicalSize(
+    Math.round((width + stretch[0]) * scale),
+    Math.round((height + stretch[1]) * scale),
+  );
   await tauri.window.getCurrentWindow().setSize(size);
 }
 
@@ -32,13 +36,25 @@ export async function resizeWindow(width, height) {
 export function setScale(value) {
   scale = value;
   document.documentElement.style.zoom = value;
+  document.documentElement.style.setProperty("--unzoom", 1 / value); // things that keep their size, like the resize grip
   return designSize ? resizeWindow(...designSize) : Promise.resolve();
+}
+
+/** New stretch, in full-size px: the window follows (same design size and scale). */
+export function setStretch(width, height) {
+  stretch = [width, height];
+  return designSize ? resizeWindow(...designSize) : Promise.resolve();
+}
+
+/** The full-size [width, height] the widget asked for, before your stretch. */
+export function getDesignSize() {
+  return designSize ?? [innerWidth / scale - stretch[0], innerHeight / scale - stretch[1]];
 }
 
 /** The window's current size in screen pixels (logical, like screenX), worked out from the design size. */
 export function windowSize() {
-  const [w, h] = designSize ?? [innerWidth / scale, innerHeight / scale];
-  return [w * scale, h * scale];
+  const [w, h] = getDesignSize();
+  return [(w + stretch[0]) * scale, (h + stretch[1]) * scale];
 }
 
 /**

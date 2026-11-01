@@ -4,6 +4,8 @@ import { getSaved, setSaved } from "../store.js";
 
 const REFRESH_MS = 10 * 60 * 1000;
 const UPCOMING_DAYS = 45; // how far ahead the "upcoming" list looks
+const MAX_ROWS = 20; // most events listed, in a card stretched tall enough (fit() keeps the ones that fit)
+const DAY_HEIGHT = 32, MAX_DAY_HEIGHT = 54; // a day's row in the month grid, and how tall spare room can make it
 const LAST_CALENDAR_KEY = "calendar.lastCalendar"; // remembers the calendar you last added to
 const plusIcon = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M7 2h2v5h5v2H9v5H7V9H2V7h5z"/></svg>';
 const prevIcon = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.3 2.3 11.7 3.7 7.4 8l4.3 4.3-1.4 1.4L4.6 8z"/></svg>';
@@ -49,6 +51,7 @@ export function mountCalendar(root) {
   let connected = false;
   let formDate = null; // a date key while the add-event form is open, else null
   let renderedDay = "";
+  let rows = null; // the events the list could show ({list, countMore}), so a resize can refit them
 
   // The month being shown. Starts on the current month; the arrows move it.
   const now0 = new Date();
@@ -184,7 +187,7 @@ export function mountCalendar(root) {
       .sort((a, b) => a.date - b.date);
 
     if (!inMonth.length) return renderNote(`No events in ${monthName}. Click a day to add one.`);
-    renderRows(inMonth.slice(0, config.upcomingEvents), inMonth.length - config.upcomingEvents);
+    renderRows(inMonth, true);
   }
 
   function renderUpcoming() {
@@ -196,17 +199,42 @@ export function mountCalendar(root) {
       .sort((a, b) => a.date - b.date); // events come from several calendars, so sort here
 
     if (!list.length) return renderNote("Nothing coming up. Click a day to add an event.");
-    renderRows(list.slice(0, config.upcomingEvents), 0);
+    renderRows(list, false);
   }
 
   function renderNote(text) {
+    rows = null;
     bottom.className = "cal-foot";
     bottom.innerHTML = `<p class="note"></p>`;
     bottom.querySelector("p").textContent = text;
+    fit();
   }
 
-  // One row per event: "Tue 14 09:30 • Title". `more` = how many didn't fit.
-  function renderRows(list, more) {
+  // As many events as fit under the grid: a taller card lists more. `countMore`: say how many didn't fit.
+  function renderRows(list, countMore) {
+    rows = { list, countMore };
+    fit();
+  }
+
+  // Fills the card: first with events (one fewer until they fit), then whatever height is
+  // still spare makes the month grid's rows taller.
+  function fit() {
+    grid.style.removeProperty("--day-h");
+    if (rows && !formDate) {
+      const cal = root.querySelector(".cal");
+      let n = Math.min(rows.list.length, MAX_ROWS);
+      drawRows(rows.list, n, rows.countMore);
+      while (n > 1 && cal.scrollHeight > cal.clientHeight) drawRows(rows.list, --n, rows.countMore);
+    }
+    // The gap the list's margin-top: auto leaves, shared out over the grid's six weeks.
+    const spare = bottom.offsetTop - (grid.offsetTop + grid.offsetHeight) - 12;
+    if (spare > 0) grid.style.setProperty("--day-h", `${Math.min(MAX_DAY_HEIGHT, DAY_HEIGHT + spare / 6)}px`);
+  }
+
+  // One row per event: "Tue 14 09:30 • Title", for the first n of the list.
+  function drawRows(all, n, countMore) {
+    const list = all.slice(0, n);
+    const more = countMore ? all.length - n : 0;
     const now = new Date();
     const todayKey = dayKey(now);
     const tomorrowKey = dayKey(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1));
@@ -235,6 +263,7 @@ export function mountCalendar(root) {
 
   function openForm(key) {
     formDate = key;
+    rows = null;
     renderMonth(); // highlights the picked day
     bottom.className = "cal-form-wrap";
     bottom.innerHTML = `
@@ -307,6 +336,8 @@ export function mountCalendar(root) {
     form.querySelector("[data-cancel]").addEventListener("click", closeForm);
     form.addEventListener("keydown", (e) => e.key === "Escape" && closeForm());
 
+    fit(); // the form is taller than the list: back to the normal row height if it needs the room
+
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
       const title = form.title.value.trim();
@@ -349,6 +380,7 @@ export function mountCalendar(root) {
 
   // A message with an optional button (not connected, errors...)
   function renderFoot(message, buttonLabel, detail = "") {
+    rows = null;
     bottom.className = "cal-foot";
     bottom.innerHTML = `
       <p class="note">${message}</p>
@@ -356,6 +388,7 @@ export function mountCalendar(root) {
       ${buttonLabel ? `<button class="btn">${buttonLabel}</button>` : ""}`;
     if (detail) bottom.querySelector("code").textContent = detail;
     bottom.querySelector(".btn")?.addEventListener("click", connect);
+    fit();
   }
 
   function setConnected(value) {
@@ -435,6 +468,15 @@ export function mountCalendar(root) {
       if (!formDate) renderList();
     }
   }
+
+  // Resized (resize.js): fit the list and the grid to the new height.
+  let frame = 0;
+  new ResizeObserver(() => {
+    frame ||= requestAnimationFrame(() => {
+      frame = 0;
+      fit();
+    });
+  }).observe(root);
 
   renderMonth();
   loadEvents();

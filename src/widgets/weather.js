@@ -8,6 +8,11 @@ const REFRESH_MS = 15 * 60 * 1000;
 const CITY_KEY = "weather.city"; // saved as {name, latitude, longitude, region}; cities saved before 0.5.4 have no region
 const CHOICES = 4; // places listed when a name matches several and none stands out
 
+// A bigger card shows more (see fit below). Sizes in the card's full-size px, like styles.css.
+const MIN_HOURS = 6, MAX_HOURS = 24; // hourly forecast: 6 at the normal width, one more per spare column
+const HOUR_WIDTH = 50, HOUR_GAP = 6; // narrowest an hour's column gets before another one is added
+const MAX_DAYS = 6;                  // daily forecast, after today: as many as fit the height
+
 // WMO weather codes -> words
 const CONDITIONS = {
   0: "Clear", 1: "Mostly clear", 2: "Partly cloudy", 3: "Overcast", 45: "Fog", 48: "Freezing fog",
@@ -21,10 +26,21 @@ const CONDITIONS = {
 export function mountWeather(root) {
   let timer = null;
   let current = getSaved(CITY_KEY);
+  let shown = null; // {city, d} while the forecast is on screen, so a resize can redraw it
   current ? showWeather(current) : askCity();
+
+  // Resized (resize.js): lay the forecast out again for the new size.
+  let frame = 0;
+  new ResizeObserver(() => {
+    frame ||= requestAnimationFrame(() => {
+      frame = 0;
+      if (shown) render(shown.city, shown.d);
+    });
+  }).observe(root);
 
   function askCity(message = "", text = "") {
     clearInterval(timer);
+    shown = null;
     root.innerHTML = `
       <form class="wx-form">
         <label for="city">Which city?</label>
@@ -57,6 +73,7 @@ export function mountWeather(root) {
   // that name): list them with district, state and country, so the one you meant is clear, or clearly missing.
   // Each choice is a <button>: main.js starts a window drag on mousedown anywhere else.
   function pickPlace(name, places) {
+    shown = null;
     root.innerHTML = `
       <div class="wx-form wx-pick">
         <p class="wx-pick-title"></p>
@@ -87,9 +104,11 @@ export function mountWeather(root) {
   }
 
   function showWeather(city) {
+    shown = null;
     root.innerHTML = `<div class="wx"><p class="note"></p></div>`;
     root.querySelector(".note").textContent = `Loading weather for ${city.name}…`; // names from the search go in as text
     const load = () => fetchWeather(city).then((d) => render(city, d)).catch(() => {
+      shown = null;
       root.innerHTML = `<div class="wx"><p class="note">Can't reach the weather service. Trying again in 15 minutes.</p></div>`;
     });
     load();
@@ -98,18 +117,33 @@ export function mountWeather(root) {
   }
 
   function render(city, d) {
+    shown = { city, d };
     const round = (n) => Math.round(n);
+
+    // As many hours as fit across: a wider card shows more of the day ahead.
+    const pad = getComputedStyle(root);
+    const width = root.clientWidth - parseFloat(pad.paddingLeft) - parseFloat(pad.paddingRight);
+    const count = Math.min(MAX_HOURS, Math.max(MIN_HOURS, Math.floor((width + HOUR_GAP) / (HOUR_WIDTH + HOUR_GAP))));
     const now = d.current.time; // local time, e.g. "2026-09-25T14:15"
     const start = d.hourly.time.findIndex((t) => t > now);
-    const hours = d.hourly.time.slice(start, start + 6).map((t, i) => ({
+    const hours = d.hourly.time.slice(start, start + count).map((t, i) => ({
       hour: t.slice(11, 13),
       temp: d.hourly.temperature_2m[start + i],
     }));
 
-    // Bar heights: scale the 6-hour range to 6–34px so small changes are visible.
+    // Bar heights: the hours' range runs from a 6px stub to 6px + --bar-range (28px, more in a
+    // taller card), so small changes are visible. --f is where each hour sits in the range.
     const temps = hours.map((h) => h.temp);
     const lo = Math.min(...temps), hi = Math.max(...temps);
-    const barHeight = (t) => 6 + (hi === lo ? 14 : ((t - lo) / (hi - lo)) * 28);
+    const barPart = (t) => (hi === lo ? 0.5 : (t - lo) / (hi - lo)).toFixed(3);
+
+    // Tomorrow onwards. Dates are the city's own ("2026-09-26"), so they're read as local midnight.
+    const days = d.daily.time.slice(1, 1 + MAX_DAYS).map((t, i) => ({
+      name: i === 0 ? "Tomorrow" : new Date(`${t}T00:00`).toLocaleDateString(undefined, { weekday: "long" }),
+      cond: CONDITIONS[d.daily.weather_code[i + 1]] ?? "—",
+      high: round(d.daily.temperature_2m_max[i + 1]),
+      low: round(d.daily.temperature_2m_min[i + 1]),
+    }));
 
     const temp = `${round(d.current.temperature_2m)}°`;
     root.innerHTML = `
@@ -122,19 +156,42 @@ export function mountWeather(root) {
             <p class="wx-feels">High ${round(d.daily.temperature_2m_max[0])}°, low ${round(d.daily.temperature_2m_min[0])}°</p>
           </div>
         </div>
-        <div class="wx-hours">
+        <div class="wx-days">
+          ${days.map((day) => `
+            <div class="wx-day">
+              <span class="wx-day-name">${day.name}</span>
+              <span class="wx-day-cond">${day.cond}</span>
+              <span class="wx-day-temp"><b>${day.high}°</b> ${day.low}°</span>
+            </div>`).join("")}
+        </div>
+        <div class="wx-hours" style="--cols:${hours.length}">
           ${hours.map((h) => `
             <div class="wx-hour">
               <b>${round(h.temp)}°</b>
-              <i style="height:${barHeight(h.temp)}px"></i>
+              <i style="--f:${barPart(h.temp)}"></i>
               <small>${h.hour}</small>
             </div>`).join("")}
         </div>
       </div>`;
+    fit();
     const cityButton = root.querySelector(".wx-city");
     cityButton.textContent = city.name;
     cityButton.title = city.region ? `${city.name}, ${city.region}. Click to change.` : "Change city";
     cityButton.addEventListener("click", () => askCity());
+  }
+
+  // Fills a tall card: the daily forecast takes as many days as fit between the temperature and
+  // the hours, then whatever height is still spare makes the hourly bars taller.
+  function fit() {
+    const wx = root.querySelector(".wx");
+    const list = root.querySelector(".wx-days");
+    const days = [...list.children];
+    while (days.length && wx.scrollHeight > wx.clientHeight) days.pop().remove();
+    list.hidden = !days.length;
+
+    const used = [...wx.children].reduce((sum, el) => sum + el.offsetHeight, 0) + (days.length ? 24 : 0); // .wx-days margins
+    const spare = wx.clientHeight - used - 14; // keep a little gap above the hours
+    wx.style.setProperty("--bar-range", `${28 + Math.min(Math.max(spare, 0), 60)}px`);
   }
 }
 
@@ -154,10 +211,10 @@ async function fetchWeather(city) {
     longitude: city.longitude,
     current: "temperature_2m,weather_code",
     hourly: "temperature_2m",
-    daily: "temperature_2m_max,temperature_2m_min",
+    daily: "temperature_2m_max,temperature_2m_min,weather_code",
     temperature_unit: config.temperatureUnit,
     timezone: "auto", // times come back in the city's local time
-    forecast_days: 2, // tomorrow too, so "next 6 hours" works late at night
+    forecast_days: 1 + MAX_DAYS, // today and the days a tall card lists; the hours run into tomorrow too
   });
   const res = await fetch(`${FORECAST_URL}?${params}`);
   if (!res.ok) throw new Error(`Weather request failed: ${res.status}`);
