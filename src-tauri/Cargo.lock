@@ -811,6 +811,7 @@ dependencies = [
  "tauri-plugin-opener",
  "tauri-plugin-updater",
  "tauri-plugin-window-state",
+ "tokio",
  "url",
  "windows 0.58.0",
 ]

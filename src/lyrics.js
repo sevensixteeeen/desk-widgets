@@ -5,17 +5,19 @@
 import { invoke } from "./api.js";
 
 export const LEAD_MS = 250; // show a line a moment early: Spotify reports its position a little late
-const RETRY_MS = 30 * 1000; // LRCLIB busy or no internet: try again this often while the song plays
+// LRCLIB still busy after Rust's own quick retries, or no internet: try again after these waits,
+// then every 30 s, while the song plays. Soon at first, because a busy spell is often short.
+const RETRY_MS = [5, 10, 20, 30].map((s) => s * 1000);
 
 export const isSpotify = (track) => /spotify/i.test(track?.app ?? "");
 
 /**
  * The lyrics of `track` as {lines: [{ms, text}], synced}, {instrumental: true}, or null if there
- * are none. If LRCLIB can't be reached it calls onRetry() and tries again every 30 s, for as long
+ * are none. If LRCLIB can't be reached it calls onRetry() and tries again (RETRY_MS), for as long
  * as stillWanted() (the same song is still playing); undefined if it gave up for that reason.
  */
 export async function loadLyrics(track, stillWanted, onRetry = () => {}) {
-  while (stillWanted()) {
+  for (let tries = 0; stillWanted(); tries++) {
     try {
       const found = await invoke("lyrics_get", {
         title: track.title, artist: track.artist, album: track.album, durationMs: track.durationMs,
@@ -24,7 +26,7 @@ export async function loadLyrics(track, stillWanted, onRetry = () => {}) {
     } catch {
       if (!stillWanted()) return undefined;
       onRetry();
-      await new Promise((r) => setTimeout(r, RETRY_MS));
+      await new Promise((r) => setTimeout(r, RETRY_MS[Math.min(tries, RETRY_MS.length - 1)]));
     }
   }
 }
