@@ -10,6 +10,11 @@ google_token.json
 client_secret*.json
 *.env
 .env*
+# Private keys, e.g. the update signing key (desk-widgets.key; its .pub half is fine to share)
+*.key
+*.pem
+*.p12
+*.pfx
 
 # Personal app data, if ever copied here
 settings.json

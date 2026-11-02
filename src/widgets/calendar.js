@@ -383,10 +383,13 @@ export function mountCalendar(root) {
     rows = null;
     bottom.className = "cal-foot";
     bottom.innerHTML = `
-      <p class="note">${message}</p>
+      <p class="note"></p>
       ${detail ? `<code class="muted"></code>` : ""}
-      ${buttonLabel ? `<button class="btn">${buttonLabel}</button>` : ""}`;
+      ${buttonLabel ? `<button class="btn"></button>` : ""}`;
+    // As text, never HTML: messages can carry error text from Google or the network.
+    bottom.querySelector(".note").textContent = message;
     if (detail) bottom.querySelector("code").textContent = detail;
+    if (buttonLabel) bottom.querySelector(".btn").textContent = buttonLabel;
     bottom.querySelector(".btn")?.addEventListener("click", connect);
     fit();
   }

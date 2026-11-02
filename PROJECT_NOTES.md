@@ -307,6 +307,15 @@ Two ways in, one function: the tray's **Lock widgets** item and the global short
 - **Signing:** each release's `setup.exe` is signed with the private key at `C:\Users\HARSHIT\.tauri\desk-widgets.key`, which GitHub has as the secret `TAURI_SIGNING_PRIVATE_KEY` (no password). The app refuses an update whose signature doesn't match, so nobody else can push one, even with a copy of the installer. **If the key is lost**, installed copies can never update again: you'd need a new key, a release with the new public key, and everyone reinstalling by hand. Keep a backup outside the repo; never commit it.
 - **Building:** pushing a `v*` tag runs `release.yml` on GitHub's Windows machines. It builds with `--config src-tauri/tauri.release.conf.json`, which adds `createUpdaterArtifacts` (the `.sig`) and limits the bundle to NSIS. It then makes a **draft** release with the setup.exe, its `.sig` and `latest.json`. Local `npm run tauri build` doesn't use that file, so it works without the key.
 
+
+### Security (`tauri.conf.json → app.security.csp`, `release.yml`)
+
+- **Content Security Policy:** the pages may only run the app's own scripts (no inline code, no `eval`, nothing from other sites), show images from the app or `data:` URLs (album art, the wallpaper), and connect only to Tauri's IPC and Open-Meteo (weather and the city search). Google, LRCLIB and GitHub are reached from Rust, which the CSP doesn't cover. Inline `style="…"` attributes are allowed (`style-src-attr 'unsafe-inline'`) because the weather bars, event dots and clock grid set a value or two that way; style sheets must still be the app's own. At build time Tauri adds `sha256-…` hashes of its own injected scripts to `script-src`.
+- **A new outside service called from JS** must be added to `connect-src`, or its `fetch` fails with "Refused to connect…" in the console. Calling it from Rust instead needs no change.
+- **Only the release build applies the CSP.** `tauri dev` serves the pages from its own server without it, so check a CSP change with `npx tauri build --no-bundle` and `src-tauri\target\release\desk-widgets.exe`, started with `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9333` to watch each window's console.
+- **Tested** on 2026-11-02 in the release build: an injected `onerror` handler, a script from a CDN, `eval` and a `fetch` to an unlisted site were all refused, while every widget and the Settings window loaded with nothing blocked.
+- **Release workflow:** every action in `release.yml` is pinned to the commit of a release (its version is in a comment), because the job holds the update signing key and a tag like `@v1` can be moved to other code. Each pin was checked against the official repo's release tag on 2026-11-02 (a commit hash alone isn't proof: GitHub serves commits from forks under the original repo's name). To update one, look up the commit its new release tag points to and replace both the hash and the comment. `dtolnay/rust-toolchain` is pinned to a commit on its `stable` branch, whose `action.yml` defaults to the stable toolchain, so it needs no `toolchain:` input.
+- **Dependencies:** `rustls`, `rustls-webpki`, `webpki-roots` and `tokio` were updated on 2026-11-02 for RustSec advisories (among them, trust in certificate issuers browsers have dropped). The other advisories in `Cargo.lock` that day were for Linux-only crates or features this app doesn't use (checked with `cargo tree --target x86_64-pc-windows-msvc`).
 ---
 
 ## 7. Design system
@@ -348,12 +357,13 @@ Two ways in, one function: the tray's **Lock widgets** item and the global short
 | `clockStyle` | `"sun"` | Clock face: `classic`, `numerals`, `rings`, `sun`, `bezel` or `digital` |
 | `weekStartsOn` | `1` | 0 = Sunday, 1 = Monday |
 | `temperatureUnit` | `"celsius"` | or `"fahrenheit"` |
-| `upcomingEvents` | `3` | Events listed under the calendar (not in Settings: more than 3 don't fit the card) |
+| `upcomingEvents` | `3` | Not used since 0.7.0: the calendar lists as many events as fit its height |
 | `nowPlayingStyle` | `"turntable"` | or `"card"` for the original compact design (the window resizes itself to match) |
+| `nowPlayingLyrics` | `false` | The line being sung, for Spotify songs, in place of the app label (see Lyrics) |
 
 **Lock shortcut:** `LOCK_SHORTCUT` at the top of the Lock section in `src-tauri/src/lib.rs` (default `"ctrl+alt+L"`). It's registered in Rust at startup, so it lives there rather than in `config.js` or the settings window; change it, then rebuild. Also update the menu label text (`Some("Ctrl+Alt+L")`) to match.
 
-**`%APPDATA%\com.deskwidgets.app\settings.json`** (written by the app): `locked` and `hidden` (list of hidden widget labels).
+**`%APPDATA%\com.deskwidgets.app\settings.json`** (written by the app): `locked`, `hidden` (labels of widgets you've hidden) and `shown` (widgets that start hidden, like `lyrics`, that you've turned on).
 
 **`src-tauri/tauri.conf.json`:** window labels, default positions, and base window sizes (already multiplied by `scale`; the clock's is the one-clock size, and it resizes itself from there). Default positions and sizes only matter on first run (after that, the saved ones win, and the page sets the size anyway), but if a widget's height changes, check the one below it still clears it. App identifier: `com.deskwidgets.app`. Don't change the identifier; it decides the AppData folder where the Google files live.
 
@@ -373,7 +383,7 @@ Two ways in, one function: the tray's **Lock widgets** item and the global short
 | Update signing key (public) | `tauri.conf.json → plugins.updater.pubkey` (also `desk-widgets.key.pub`) | Yes |
 
 - Dev mode and the installed app share the files in `%APPDATA%`, so they show the same clocks, sizes and city. Only the theme cache is separate (`localStorage` is per origin: `127.0.0.1:1430` in dev, `tauri.localhost` installed).
-- `.gitignore` blocks `node_modules/`, `src-tauri/target/`, `src-tauri/gen/`, `google_client.json`, `google_token.json`, `client_secret*.json`, `.env*`, `settings.json`, and editor clutter. That `settings.json` rule matches the name in any folder, which is why the settings window's capability file is called `settings-window.json`.
+- `.gitignore` blocks `node_modules/`, `src-tauri/target/`, `src-tauri/gen/`, `google_client.json`, `google_token.json`, `client_secret*.json`, `.env*`, private keys (`*.key`, `*.pem`, `*.p12`, `*.pfx`; the signing key's `.pub` half isn't matched), `settings.json`, and editor clutter. That `settings.json` rule matches the name in any folder, which is why the settings window's capability file is called `settings-window.json`.
 
 ---
 
@@ -636,6 +646,7 @@ Options if you want it lower:
 | 2026-11-01 | Spotify lyrics from LRCLIB: a lyrics widget (starts hidden) and the current line in Now playing (Settings, off by default) |
 | 2026-11-01 | A classier turntable: metal platter rim and tonearm, the arc and buttons in the text colour, the accent only in small touches |
 | 2026-11-01 | v0.8.0: Spotify lyrics, classier turntable |
+| 2026-11-02 | Security: a Content Security Policy, the release workflow's actions pinned to release commits, rustls / rustls-webpki / webpki-roots / tokio updated for RustSec advisories, calendar messages shown as text, private keys in `.gitignore` |
 
 ## 20. Ideas for later
 
