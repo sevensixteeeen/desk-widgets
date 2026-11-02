@@ -650,6 +650,7 @@ Options if you want it lower:
 | 2026-11-01 | A classier turntable: metal platter rim and tonearm, the arc and buttons in the text colour, the accent only in small touches |
 | 2026-11-01 | v0.8.0: Spotify lyrics, classier turntable |
 | 2026-11-02 | Lyrics come much sooner when LRCLIB is busy: quick retries as LRCLIB asks, then 5/10/20/30 s instead of 30 s; one lookup per song, and a skipped song no longer holds up the next |
+| 2026-11-02 | v0.8.1: security hardening, lyrics sooner when LRCLIB is busy; the first release built with pinned actions |
 | 2026-11-02 | Security: a Content Security Policy, the release workflow's actions pinned to release commits, rustls / rustls-webpki / webpki-roots / tokio updated for RustSec advisories, calendar messages shown as text, private keys in `.gitignore` |
 
 ## 20. Ideas for later
