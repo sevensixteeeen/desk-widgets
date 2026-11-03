@@ -658,6 +658,7 @@ Options if you want it lower:
 | 2026-11-02 | Lyrics come much sooner when LRCLIB is busy: quick retries as LRCLIB asks, then 5/10/20/30 s instead of 30 s; one lookup per song, and a skipped song no longer holds up the next |
 | 2026-11-02 | v0.8.1: security hardening, lyrics sooner when LRCLIB is busy; the first release built with pinned actions |
 | 2026-11-03 | Lyrics widget: scroll with the wheel, touchpad, or a drag while locked (back to following after 4 s); tap a line to play the song from there |
+| 2026-11-03 | v0.8.2: scroll the lyrics, tap a line to play from there |
 
 ## 20. Ideas for later
 
