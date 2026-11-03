@@ -558,6 +558,14 @@ button:focus-visible, input:focus-visible {
 .ly-line.is-past { opacity: 0.16; }
 .ly-line.is-now { opacity: 1; }
 .ly.is-plain .ly-line { opacity: 0.6; }
+/* Scrolling (lyrics.js): the lines are dragged or wheeled by hand, so they slide quickly, or not at
+   all under a finger or held mouse button, instead of the slow glide from line to line. */
+.ly-view { touch-action: none; } /* a finger moves the lines; the browser doesn't take it for panning */
+.ly.is-browsing .ly-lines { transition: transform 0.15s ease-out; }
+.ly.is-dragging .ly-lines { transition: none; }
+/* Tap a line to play from it. Set on the line itself, so it beats the card's move/arrow cursor. */
+.ly.can-tap .ly-line { cursor: pointer; }
+.ly.can-tap .ly-line:not(.is-now):hover { opacity: 0.6; }
 /* Messages (finding, none found, Spotify only) sit in the middle, unfaded. */
 .ly.is-note .ly-view { display: grid; align-items: center; mask-image: none; }
 .ly-note { font-size: 14px; color: var(--muted); }

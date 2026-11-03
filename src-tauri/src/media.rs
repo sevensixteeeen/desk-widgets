@@ -130,6 +130,7 @@ mod imp {
         let Some(session) = current_session()? else { return Ok(()) };
         match action {
             "toggle" => { session.TryTogglePlayPauseAsync()?.get()?; }
+            "play" => { session.TryPlayAsync()?.get()?; } // the lyrics widget: play from the line you tapped
             "next" => { session.TrySkipNextAsync()?.get()?; }
             "prev" => { session.TrySkipPreviousAsync()?.get()?; }
             _ => {}
