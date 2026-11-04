@@ -1,12 +1,12 @@
 # Desk Widgets
 
-Desktop widgets for Windows: an analog world clock, now playing, weather, and Google Calendar, themed from your wallpaper.
+Desktop widgets for Windows: an analog world clock, now playing with Spotify lyrics, weather, and Google Calendar, themed from your wallpaper.
 
-![Preview](preview.png)
+![The clock with three cities, the turntable, the weather and the calendar](preview.png)
 
 ## Download
 
-**[⬇ Download the latest version](https://github.com/sevensixteeeen/desk-widgets/releases/latest)**. Under **Assets**, pick the file ending in `x64-setup.exe` (about 3 MB).
+**[⬇ Download the latest version](https://github.com/sevensixteeeen/desk-widgets/releases/latest)**. Under **Assets**, pick the file ending in `x64-setup.exe` (about 4 MB).
 
 1. Run the installer. Windows shows **"Windows protected your PC"** because the app isn't code-signed; click **More info → Run anyway**.
 2. Open **Desk Widgets** from the Start menu. The widgets appear on your desktop, behind your other windows.
@@ -14,7 +14,7 @@ Desktop widgets for Windows: an analog world clock, now playing, weather, and Go
 
 **Needs:** 64-bit Windows 10 or 11. Nothing else to install.
 
-**Works right away:** clock, now playing and weather (type your city once). The **calendar** needs a one-time Google setup, described [below](#connect-google-calendar-optional).
+**Works right away:** clock, now playing, lyrics and weather (type your city once). The **calendar** needs a one-time Google setup, described [below](#connect-google-calendar-optional).
 
 **Updates:** from 0.6.0 on, the app checks for new versions by itself and asks before installing one. Older versions need this one last manual install; your widgets keep their positions, sizes and clocks.
 
@@ -45,6 +45,10 @@ Desktop widgets for Windows: an analog world clock, now playing, weather, and Go
 
 ![Clock and now playing themed from a light wallpaper (left) and a dark wallpaper (right)](screenshots/themes.jpg)
 
+**Lyrics, following along.** The lyrics widget next to the turntable, playing the same song: the line being sung is bright, and the lines move up as the song goes on. Scroll to look back or ahead, and tap any line to play the song from there.
+
+![The turntable and the lyrics widget playing the same song, with the line being sung highlighted](screenshots/lyrics.jpg)
+
 **Settings.** Right-click the tray icon → **Settings…**. Changes apply right away, and the window follows your wallpaper too.
 
 ![The settings window in a light theme and a dark theme](screenshots/settings.png)
@@ -55,7 +59,8 @@ Desktop widgets for Windows: an analog world clock, now playing, weather, and Go
 - **Resize a widget:** drag the round grip in its bottom-right corner (it appears when you point at the widget, and for a few seconds after you unlock) to set its width and height. Hold **Shift** while dragging, or hold **Ctrl** and scroll the mouse wheel over it, to make it bigger or smaller all over. Double-click the grip to go back to the default size. Locked widgets can't be resized: unlock with **Ctrl+Alt+L**.
 - **Lock them in place:** tray → **Lock widgets**, or **Ctrl+Alt+L** from anywhere.
 - **Hide a widget:** tray → **Show widgets** → untick it.
-- **Spotify lyrics:** tray → **Show widgets** → tick **Lyrics** for the lyrics widget, and/or Settings → Now playing → **Spotify lyrics** for the current line on the turntable. Only Spotify songs are looked up; LRCLIB sees the song's title and artist.
+- **Spotify lyrics:** tray → **Show widgets** → tick **Lyrics** for the lyrics widget, and/or Settings → Now playing → **Spotify lyrics** for the current line on the turntable. Only Spotify songs are looked up; LRCLIB sees the song's title, artist, album and length.
+- **Scroll the lyrics, or play from a line:** scroll with the mouse wheel or touchpad (or drag the lines while the widgets are locked); a few seconds after you stop, it goes back to the line being sung. Tap a line and Spotify jumps there, and starts playing if it was paused.
 - **Change settings:** tray → **Settings…**. Only the widgets a change affects reload; **Reset to defaults** undoes everything.
 - **Jump to a point in the song:** click or drag the arc around the record.
 - **Change the weather city:** click the city name and type a new one. If several places share the name, pick yours from the list, which shows each one's district, state and country.
@@ -78,7 +83,7 @@ To stay signed in for more than 7 days, publish the app from the **Audience** pa
 
 ## Your data
 
-Everything stays on your PC. The Google client file and sign-in token live in `%APPDATA%\com.deskwidgets.app\` and are never part of this repo. Calendar events go straight between your PC and Google. The weather widget sends only the city name you type to Open-Meteo.
+Everything stays on your PC. The Google client file and sign-in token live in `%APPDATA%\com.deskwidgets.app\` and are never part of this repo. Calendar events go straight between your PC and Google. The weather widget sends only the city name you type to Open-Meteo. With lyrics turned on, the title, artist, album and length of the song playing on Spotify go to LRCLIB to find its words.
 
 ## For developers
 

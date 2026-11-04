@@ -122,6 +122,8 @@ export function invoke(command, args) {
 
 // ---- Sample data for browser previews ----
 let startedAt = Date.now(); // `let` so the sample can "seek"
+// ?pos=86 holds the sample song paused at 86 s, so a social image (social/poster.html) always shows the same lyric line.
+const heldAt = Number(new URLSearchParams(location.search).get("pos")) * 1000 || 0;
 const dayKey = (iso) => iso.slice(0, 10);
 function sample(command, args) {
   if (command === "media_seek") startedAt = Date.now() - (args.positionMs - 83000);
@@ -132,7 +134,7 @@ function sample(command, args) {
   const data = {
     media_now_playing: {
       title: "Night Drive", artist: "Sample Artist", album: "Preview", app: "Spotify.exe",
-      playing: true, positionMs: 83000 + (Date.now() - startedAt), durationMs: 214000, canSeek: true,
+      playing: !heldAt, positionMs: heldAt || 83000 + (Date.now() - startedAt), durationMs: 214000, canSeek: true,
     },
     media_thumbnail: null,
     media_control: null,

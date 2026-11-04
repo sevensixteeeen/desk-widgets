@@ -479,7 +479,7 @@ gh secret set TAURI_SIGNING_PRIVATE_KEY -R sevensixteeeen/desk-widgets --body $k
 
 Don't run `npm run tauri dev` while the installed app is open, or you'll get two sets of widgets.
 
-**README images** (`preview.png`, `screenshots/`) are the browser preview with its sample data, not a real desktop: serve `src/` (`python -m http.server`), frame `index.html?w=clock&dial=…&zones=…&sky=…&wp=…` and `settings.html?wp=…` at their real sizes (design size × 0.78), and screenshot at 2× in headless Edge (`--force-device-scale-factor=2 --screenshot`). `?wp=` themes them from any image; the ones in `screenshots/themes.jpg` are generated gradients, not someone's artwork.
+**README images** (`preview.png`, `screenshots/`) are the browser preview with its sample data, not a real desktop: serve `src/` (`python -m http.server`), frame `index.html?w=clock&dial=…&zones=…&sky=…&wp=…` and `settings.html?wp=…` at their real sizes (design size × 0.78), and screenshot at 2× in headless Edge (`--force-device-scale-factor=2 --screenshot`). `?wp=` themes them from any image; the ones in `screenshots/themes.jpg` are generated gradients, not someone's artwork. `?pos=86` holds the sample song paused at 86 s (`api.js`), so a lyrics picture always shows the same line; without it the song plays on from 1:23 and the line depends on when the shot is taken.
 
 ---
 
@@ -659,6 +659,7 @@ Options if you want it lower:
 | 2026-11-02 | v0.8.1: security hardening, lyrics sooner when LRCLIB is busy; the first release built with pinned actions |
 | 2026-11-03 | Lyrics widget: scroll with the wheel, touchpad, or a drag while locked (back to following after 4 s); tap a line to play the song from there |
 | 2026-11-03 | v0.8.2: scroll the lyrics, tap a line to play from there |
+| 2026-11-04 | README: new pictures in the current design (the metal turntable, settings with Spotify lyrics) and one of the lyrics widget; `?pos=` holds the preview's sample song still |
 
 ## 20. Ideas for later
 
